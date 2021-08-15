@@ -851,6 +851,14 @@ static int e1000_set_features(struct net_device *netdev,
  * 		a. 网卡收包时首先调用函数 e1000_open()
  * 		b. 然后 e1000_open 会调用 e1000_setup_all_tx_resources 
  *		c. 在该函数中调用 e1000_request_irq() 申请中断号及其相应的中断处理程序
+ *
+ * 
+ * 	网络设备也可以有很多虚拟的
+ * 	比如 e1000 是一块儿真实网卡, 它需要有个对应的网卡驱动
+ * 	如果还有其他网卡的话, 再往上层和驱动进行绑定的时候, 也可以和 e1000 的驱动进行绑定
+ * 	但是还可以和其他的虚拟设备驱动进行绑定
+ * 	比如可以和一个虚拟的网桥设备进行绑定, 或者和一个虚拟的点对点 PPP 设备进行绑定
+ * 	这种网桥设备或者 PPP 设备, 他们都可以当成是一个驱动, 都可以作为驱动和更下层的网卡进行绑定
  */
 static const struct net_device_ops e1000_netdev_ops = { 
 	.ndo_open		= e1000_open,
@@ -4302,7 +4310,8 @@ static bool e1000_clean_jumbo_rx_irq(struct e1000_adapter *adapter,
  * 	 napi_gro_receive 又主要调用 napi_skb_finish()
  * 	 此时 napi_skb_finish 已经拥有了完整的从驱动中拿到的 skb 作为参数了
  *   napi_skb_finish 内部最终调用 __netif_receive_skb(struct sk_buff *skb) 方法
- * 	 以此来讲 skb 交给内核协议栈
+ * 		__netif_receive_skb 最终最终, 调用 __netif_receive_skb_core 方法
+ * 	 以此来将 skb 交给内核协议栈
  */
 process_skb:
 		if (!(status & E1000_RXD_STAT_EOP)) {

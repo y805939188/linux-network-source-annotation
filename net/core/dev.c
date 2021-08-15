@@ -1878,6 +1878,23 @@ int dev_forward_skb(struct net_device *dev, struct sk_buff *skb)
 }
 EXPORT_SYMBOL_GPL(dev_forward_skb);
 
+/**
+ * 9.网卡收包. deliver_skb 方法接收 pt_prev, 是个 packet_type 类型
+ * 	 这个 struct 对应着不同协议, 每个协议可以注册一个或多个处理该协议的函数
+ * 	 pt_prev -> func 就是处理函数
+ * 
+ * 	 以 ip 协议为例, 要处理 ip 协议的这个 func 是在 inet_init 这个函数中被创建的
+ * 	 内核在最开始会初始化一些协议栈的处理函数
+ * 	 其中就会在 inet_init 中创建一个名为 ip_packet_type 的 packet_type 类型结构体,
+ *   并把 type 给成 ETH_P_IP
+ * 	 表示用来处理 ipv4 协议
+ * 	 然后 func 给成 ip_rcv 函数作为 ipv4 协议的回调处理函数
+ * 	
+ * 	 当然还有好多其他协议, 在源码的 /include/uapi/linux/if_ether.h 头文件中有所定义
+ * 	 比如类似 arp 协议的话, 有个叫 arp_packet_type 的结构体, 也注册对应了 type 以及回调处理函数
+ * 	 ipv6 也会有对应的
+ * 	 基本上只要是链路层之上的协议, 都会注册这样一个结构体
+ */
 static inline int deliver_skb(struct sk_buff *skb,
 			      struct packet_type *pt_prev,
 			      struct net_device *orig_dev)
@@ -4757,6 +4774,27 @@ static inline int nf_ingress(struct sk_buff *skb, struct packet_type **pt_prev,
 	return 0;
 }
 
+/**
+ * 8.网卡收包 该方法会将 skb 交给上层的协议栈, 相当于一个链路层 → 网络层之间的一个接口函数
+ * 	 该方法就是网卡收到包之后, 网卡驱动处理完之后, 在最终交给上层协议栈之前的自后一个函数
+ * 
+ * 	 相反的, 从协议栈出来之后, 要往外发送的时候, 第一个函数式 dev_queue_xmit
+ * 
+ * 	 该函数中有个很重要的地方是如下代码:
+ * 	 	list_for_each_entry_rcu(ptype, &ptype_all, list)
+ * 	  这行代码的作用是对 list 做遍历, 然后调用注册在 ptype_all 上的函数来对 skb 做一些处理
+ * 	  比如用户态的 tcpdump抓包 等操作, 都是往这里注册钩子, 不管是啥协议的报文都会走一遍这些函数
+ * 
+ * 
+ * 	 另外还有个比较重要的地方:
+ * 	 type = skb->protocol;
+ *   deliver_ptype_list_skb(skb, &pt_prev, orig_dev, typ, &ptype_base[ntohs(type), &PTYPE_HASH_MASK]);
+ * 
+ * 	 先从当前的 skb 报文中获取到协议, 也就是除去二层协议头中源 mac 以及目标 mac 之外的那个三层的 protocol
+ * 	 比如 ip, icmp 等
+ * 	 在 deliver_ptype_list_skb 方法中会依次遍历所有的 ptype, 也就是 protocol type
+ * 	 然后和传进来的这个 type 作对比, 如果不一样就 continue, 一样的交给 deliver_ptype_list_skb 方法处理
+ */
 static int __netif_receive_skb_core(struct sk_buff *skb, bool pfmemalloc,
 				    struct packet_type **ppt_prev)
 {
@@ -4810,6 +4848,9 @@ another_round:
 	if (pfmemalloc)
 		goto skip_taps;
 
+	/**
+	 * 
+	 */
 	list_for_each_entry_rcu(ptype, &ptype_all, list) {
 		if (pt_prev)
 			ret = deliver_skb(skb, pt_prev, orig_dev);
@@ -4912,6 +4953,10 @@ check_vlan_id:
 
 	/* deliver only exact match when indicated */
 	if (likely(!deliver_exact)) {
+		/**
+		 * 
+		 * 
+		 */
 		deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
 				       &ptype_base[ntohs(type) &
 						   PTYPE_HASH_MASK]);

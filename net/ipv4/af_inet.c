@@ -1906,6 +1906,11 @@ static struct packet_type ip_packet_type __read_mostly = {
 	.list_func = ip_list_rcv,
 };
 
+/**
+ * 0.网卡收包. inet_init 方法会对一些网络层协议还有 ip 协议进行初始化
+ * 	 比如 ip 协议就会创建一个 packet_type 的结构体, 把里面的 .func 填充成钩子函数
+ * 	 然后使用 dev_add_pack 方法把 packet_type 添加进 ptype 的链表中
+ */
 static int __init inet_init(void)
 {
 	struct inet_protosw *q;
