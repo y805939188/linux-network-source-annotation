@@ -439,6 +439,13 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 	return p;
 }
 
+/**
+ * 1.添加网桥设备. br_add_bridge 函数在用户空间调用 rctl add brx 时候会被最终调用
+ * 	 会创建出一个 net_device 类型的网桥设备
+ * 	 
+ * 	 该方法中, 首先调用 alloc_netdev 方法, 给设备分配一块儿内存,
+ * 	 同时执行 br_dev_setup 回调, br_dev_setup 方法会对网桥设备进行初始化, 包括启动网桥触发的函数, 关闭网桥触发的函数等等
+ */
 int br_add_bridge(struct net *net, const char *name)
 {
 	struct net_device *dev;
@@ -553,6 +560,17 @@ netdev_features_t br_features_recompute(struct net_bridge *br,
 }
 
 /* called with RTNL */
+
+/**
+ * 1.网桥添加设备. br_add_if 函数, 当调用类似 brctl addif br0 eth1 这种命令的时候
+ * 	 最终就是调用的这个函数, brctl 是通过 ioctl 实现的
+ * 
+ * 	 该函数中, 有一步是: netdev_rx_handler_register(dev, br_handle_frame, p);
+ * 	 它表示向 dev 这个设备上, 添加一个 br_handle_frame 函数
+ * 	 该函数在哪里执行呢
+ * 	 就在网卡驱动从网卡收到数据包后处理完后即将交给协议栈的最后一个函数中
+ * 	 也就是 __netif_receive_skb_core 这个函数中
+ */
 int br_add_if(struct net_bridge *br, struct net_device *dev,
 	      struct netlink_ext_ack *extack)
 {
@@ -616,6 +634,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 	if (err)
 		goto err3;
 
+	// 向 dev 这个设备中, 添加一个叫做 br_handle_frame 的处理函数
 	err = netdev_rx_handler_register(dev, br_handle_frame, p);
 	if (err)
 		goto err4;

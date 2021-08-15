@@ -59,6 +59,12 @@ drop:
 }
 EXPORT_SYMBOL_GPL(br_dev_queue_push_xmit);
 
+/**
+ * 10.网桥添加设备. br_forward_finish 函数也是, 上来先执行一套 NF_BR_POST_ROUTING 链儿上的函数
+ * 	  之后调用 br_dev_queue_push_xmit 这个函数里头调用 dev_queue_xmit 方法
+ * 	  dev_queue_xmit 方法最终会调用 __dev_queue_xmit
+ * 	  这个就是 网卡发包过程的一步
+ */
 int br_forward_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	skb->tstamp = 0;
@@ -69,6 +75,10 @@ int br_forward_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 }
 EXPORT_SYMBOL_GPL(br_forward_finish);
 
+/**
+ * 9.网桥添加设备. __br_forward 函数中会先执行 NF_BR_LOCAL_OUT 链儿上的狗子
+ * 	 然后执行 br_forward_finish 函数
+ */
 static void __br_forward(const struct net_bridge_port *to,
 			 struct sk_buff *skb, bool local_orig)
 {
@@ -135,6 +145,12 @@ static int deliver_clone(const struct net_bridge_port *prev,
  *
  * Should be called with rcu_read_lock.
  */
+
+/**
+ * 8.网卡添加设备. br_forward 函数负责网桥设备把 skb 包进行转发
+ * 	 该函数首先用 to 判断一下这个要 to 的 mac 地址的合法性
+ * 	 然后合法的话执行 __br_forward
+ */
 void br_forward(const struct net_bridge_port *to,
 		struct sk_buff *skb, bool local_rcv, bool local_orig)
 {
@@ -188,6 +204,19 @@ out:
 }
 
 /* called under rcu_read_lock */
+/**
+ * 12.网桥添加设备. br_flood 函数用来当网桥要进行泛洪的时候会被触发
+ * 	  首先会要遍历该网桥上连接的所有设备, 判断一些情况, 判断该连着的设备是否需要泛洪
+ * 	  
+ * 	  如果是单播, 广播, 多播, 的话都直接 continue 或者如果是 BR_PROXYARP(???) 也直接略过
+ * 	  TODO: BR_PROXYARP 是个鸟???
+ * 	  TODO: 广播多播和单播时候如何与泛洪进行区分???
+ * 
+ * 	  如果以上过滤的逻辑都不匹配的话, 就调用 maybe_deliver 函数, 该函数中调用 deliver_clone 方法
+ * 	  deliver_clone 方法中最终调用 __br_forward 方法, 这个方法和单播的时候一样
+ * 	  所以泛洪相当于给所有符合条件的口儿全部进行了单播
+ * 	  
+ */
 void br_flood(struct net_bridge *br, struct sk_buff *skb,
 	      enum br_pkt_type pkt_type, bool local_rcv, bool local_orig)
 {
@@ -266,6 +295,10 @@ static void maybe_deliver_addr(struct net_bridge_port *p, struct sk_buff *skb,
 }
 
 /* called with rcu_read_lock */
+/**
+ * 13.网桥设备添加. br_multicast_flood 用来进行广播的泛洪
+ * 	  br_multicast_flood 和 br_flood 泛洪差不多, 也是找到符合条件的端口, 进行 maybe_deliver 一对一的单播
+ */
 void br_multicast_flood(struct net_bridge_mdb_entry *mdst,
 			struct sk_buff *skb,
 			bool local_rcv, bool local_orig)

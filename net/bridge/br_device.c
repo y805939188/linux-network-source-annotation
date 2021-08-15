@@ -25,6 +25,13 @@ const struct nf_br_ops __rcu *nf_br_ops __read_mostly;
 EXPORT_SYMBOL_GPL(nf_br_ops);
 
 /* net device transmit always called with BH disabled */
+
+/**
+ * 2.网桥发送数据. br_dev_xmit 函数和网桥接收数据包的逻辑很类似
+ * 	 也是在 fdb 表中看能否进行转发, 能的话 br_forward 转发
+ * 	 不能的话, 如果是组播报文就交给 is_multicast_ether_addr 组播的协议栈进行处理或者组播的泛洪
+ * 	 如果是广播报文, 就进行泛洪
+ */
 netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct net_bridge *br = netdev_priv(dev);
@@ -375,6 +382,17 @@ static const struct ethtool_ops br_ethtool_ops = {
 	.get_link	= ethtool_op_get_link,
 };
 
+/**
+ * 0.网桥添加设备. br_netdev_ops 会在内核初始化时就被创建, 里头也有个 br_dev_openx 方法
+ * 
+ * 
+ * 
+ * 1.网桥发送数据. net_device_ops.br_dev_xmit 进行网桥中的数据包的发送
+ * 
+ * 	 一般对于网桥来讲, 很少会主动调用网桥自己的发送接口.
+ * 	 在 linux 中, 可以给网桥设置一个 ip 地址, 上层用户层的应用可以使用网桥的 ip 地址进行转发
+ * 	 比如在用户层去 ping 别人的时候, 可以通过网桥去 ping, 这个时候会主动调用到 br_dev_xmit 方法
+ */
 static const struct net_device_ops br_netdev_ops = {
 	.ndo_open		 = br_dev_open,
 	.ndo_stop		 = br_dev_stop,
@@ -409,6 +427,11 @@ static struct device_type br_type = {
 	.name	= "bridge",
 };
 
+/**
+ * 2.添加网桥设备. br_dev_setup 函数对网桥 dev 进行初始化操作
+ * 	 br_netdev_ops 里头就包含类似 e1000 初始化时候的什么 xxx_open 方法之类的
+ * 	 这里叫 br_dev_open
+ */
 void br_dev_setup(struct net_device *dev)
 {
 	struct net_bridge *br = netdev_priv(dev);

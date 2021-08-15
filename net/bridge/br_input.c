@@ -22,6 +22,16 @@
 #include "br_private.h"
 #include "br_private_tunnel.h"
 
+/**
+ * 7.网桥添加设备. br_netif_receive_skb 方法中调用 netif_receive_skb 方法
+ * 	 netif_receive_skb 方法就是老生常谈的那个最后会调用 __netif_receive_skb 以及 __netif_receive_skb_core 的方法
+ * 
+ * 	 在 __netif_receive_skb_core 方法中, 理论上会走单独的桥接设备的逻辑, 也就是判断是否有 skb->dev->rx_handler
+ * 	 如果有的话就执行处理网桥的回调的逻辑
+ * 	 但是这样的话就死循环了
+ * 	 其实的在经过步骤 6 中的 br_pass_frame_up 函数时候, skb->dev = brdev 已经把 skb 的 dev 换成了 brdev
+ * 	 所以最终走到 __netif_receive_skb_core 的时候, 已经没有 rx_handler 了, 所以不会死循环
+ */
 static int
 br_netif_receive_skb(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
@@ -29,6 +39,18 @@ br_netif_receive_skb(struct net *net, struct sock *sk, struct sk_buff *skb)
 	return netif_receive_skb(skb);
 }
 
+
+/**
+ * 6.网桥添加设备. br_pass_frame_up 函数中会在 NF_BR_LOCAL_IN 这个链儿上进行 nf 的钩子处理
+ * 	 然后执行 skb->dev = brdev; 将 dev 给换掉, 以防止之后再执行 __netif_receive_skb_core 时候会死循环
+ * 
+ * 	 也就是说, 比如最下层有个 e1000 网卡, 把网卡加入到某个网桥设备的话, 对这个来讲, 他自己可能不知道有这回事儿
+ * 	 比如那个 skb 是从它这里收上来的, 理论上 skb 的 dev 应该是这个 e1000 网卡的抽象, 但是由于给它加入到了网桥
+ * 	 就挂上了网桥的 rx_handler, 经过这个 rx_handler 处理一圈下来, 这个 skb 的 dev 就被偷摸替换成了网桥设备了
+ * 	 所以当再运行到 __netif_receive_skb_core 的时候, dev 上已经 rx_handler 函数了, 于是就走正常的逻辑, 发往上层协议栈
+ * 
+ * 	 处理完之后执行 br_netif_receive_skb 函数
+ */
 static int br_pass_frame_up(struct sk_buff *skb)
 {
 	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
@@ -67,6 +89,21 @@ static int br_pass_frame_up(struct sk_buff *skb)
 }
 
 /* note: already called with rcu_read_lock */
+
+/**
+ * 5.网桥添加设备. br_handle_frame_finish 方法会通过 BR_LEARNING 这个 flag 来判断是否需要学习
+ * 	 如果需要学习的话, 就执行 br_fdb_update 来更新转发表, 原理大概就是看这个网桥设备对应的表中有没有, 有就啥也不干, 没有就加上
+ * 
+ * 	 然后根据 is_multicast_ether_addr 方法判断 dest 目标 mac 地址是否是一个广播或者组播地址
+ * 	 如果是组播的话就执行 br_multicast_rcv 将数据包送到组播的协议栈进行处理, 里头分为 ipv4 和 ipv6 的处理
+ * 
+ * 	 如果是单播的话, 通过 br_fdb_find_rcu 查表, 看看有没有这项
+ * 	 查出来如果发现是本地地址的话, 就调用: br_pass_frame_up, 来把当前这个包向上传递给本机的内核协议栈
+ * 		 br_pass_frame_up 里头也会调用 netfilter 的钩子
+ * 	 如果不是本地地址的话, 就调用: br_forward
+ * 
+ * 	 如果需要组播或者泛洪的时候, 分别调用 br_flood 或 br_multicast_flood
+ */
 int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_bridge_port *p = br_port_get_rcu(skb->dev);
@@ -196,6 +233,12 @@ static int br_handle_local_finish(struct net *net, struct sock *sk, struct sk_bu
 	return 1;
 }
 
+/**
+ * 4.网桥添加设备. nf_hook_bridge_pre 函数中会对 skb 进行很多 hooks 的处理
+ * 	 比如是用 nf_hook_state_init 方法, 会在 netfilter 的这个 NF_BR_PRE_ROUTING 链儿上进行一些钩子处理
+ * 
+ * 	 如果在经历这些钩子处理之后没有被 drop 掉的话, 会进行 br_handle_frame_finish 函数处理
+ */
 static int nf_hook_bridge_pre(struct sk_buff *skb, struct sk_buff **pskb)
 {
 #ifdef CONFIG_NETFILTER_FAMILY_BRIDGE
@@ -252,6 +295,18 @@ frame_finish:
 /*
  * Return NULL if skb is handled
  * note: already called with rcu_read_lock
+ */
+
+/**
+ * 3.网桥添加设备. br_handle_frame 方法会在 __netif_receive_skb_core 方法中
+ * 	 也就是即将把 skb 交给上层协议栈之前的最后一个函数中去判断, 如果该设备被加入到网桥
+ * 	 就会将 skb 传给 br_handle_frame 这个函数进行执行
+ * 
+ * 	
+ * 	 br_handle_frame 函数中先 is_link_local_ether_addr 来判断是否是一些本地的特殊的 mac 地址
+ * 	 这些 mac 地址有一些特殊的功能
+ * 
+ * 	 接下来有个 forward 的逻辑进行数据包的转发, 调用 nf_hook_bridge_pre 函数
  */
 rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 {

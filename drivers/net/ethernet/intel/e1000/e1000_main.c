@@ -1433,7 +1433,7 @@ static int e1000_alloc_queues(struct e1000_adapter *adapter)
  **/
 
 /**
- * 1.网卡收包 e1000_open 方法
+ * 1.网卡收包. e1000_open 方法
  * 	 当网卡被置为 up 的时候, 比如用户 ifconfig up 时, 就会调用这个 e1000_open 方法
  * 	 (当用户 ifconfig up 时, 会走 ioctl 系统调用, 这个系统调用和 netlink 有点类似, 都是用从来用户空间和内核态进行通信的方法)
  * 

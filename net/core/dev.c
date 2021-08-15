@@ -3754,6 +3754,12 @@ struct netdev_queue *netdev_core_pick_tx(struct net_device *dev,
  * 	 如果是比较简单的设备的话, 就通过 dev_hard_start_xmit 函数发送
  * 
  * 	 使用优先级队列的话, 就用 __dev_xmit_skb 这个方法发送
+ * 
+ * 
+ * 
+ * 11.网桥添加设备. __dev_queue_xmit 在网桥设备中也有用到, 如果说网桥发现 mac 地址不属于本机的话
+ * 	   就进行 br_forward 操作, 这个操作中就会使用到 __dev_queue_xmit 这个方法进行转发
+ * 	   这个过程中也没有走协议栈, 直接就用该函数给它干出去了
  */
 static int __dev_queue_xmit(struct sk_buff *skb, struct net_device *sb_dev)
 {
@@ -4794,6 +4800,13 @@ static inline int nf_ingress(struct sk_buff *skb, struct packet_type **pt_prev,
  * 	 比如 ip, icmp 等
  * 	 在 deliver_ptype_list_skb 方法中会依次遍历所有的 ptype, 也就是 protocol type
  * 	 然后和传进来的这个 type 作对比, 如果不一样就 continue, 一样的交给 deliver_ptype_list_skb 方法处理
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ *  8.网桥添加设备.__netif_receive_skb_core
  */
 static int __netif_receive_skb_core(struct sk_buff *skb, bool pfmemalloc,
 				    struct packet_type **ppt_prev)
@@ -4890,6 +4903,15 @@ skip_classify:
 			goto out;
 	}
 
+	/**
+	 * 2.网桥添加设备. rx_handler 函数是在 br_add_if 函数中赋值的
+	 * 	 也就是说, 如果用户执行了 brctl addif br0 eth1 这种命令的话
+	 * 	 就会触发那个 br_add_if, 然后就会给 eth1 这块儿网卡加入到 br0 这个网桥中
+	 * 	 然后从 eth1 收到的数据包的 skb -> dev -> rx_handler 就会有值
+	 * 	 
+	 * 	 之后执行这个 rx_handler 后, 根据返回值来决定是继续将包交付给上层协议栈
+	 * 	 亦或是直接丢弃或者转发出去等等
+	 */
 	rx_handler = rcu_dereference(skb->dev->rx_handler);
 	if (rx_handler) {
 		if (pt_prev) {
