@@ -3275,11 +3275,21 @@ int skb_csum_hwoffload_help(struct sk_buff *skb,
 }
 EXPORT_SYMBOL(skb_csum_hwoffload_help);
 
+
+/**
+ * 4.vlan 设备发送数据 validate_xmit_skb
+ * 
+ */
 static struct sk_buff *validate_xmit_skb(struct sk_buff *skb, struct net_device *dev, bool *again)
 {
 	netdev_features_t features;
 
 	features = netif_skb_features(skb);
+	/**
+	 * 首先判断 skb 的中是否有 vlan 的一些 tag
+	 * 这些 tag 是在最开始的 vlan 发送函数中的给干上的
+	 * 满足条件后会调用 __vlan_hwaccel_push_inside 方法
+	 */
 	skb = validate_xmit_vlan(skb, features);
 	if (unlikely(!skb))
 		goto out_null;
@@ -3828,6 +3838,14 @@ static int __dev_queue_xmit(struct sk_buff *skb, struct net_device *sb_dev)
 			if (dev_xmit_recursion())
 				goto recursion_alert;
 
+
+			/**
+			 * 3.vlan 设备发送数据.validate_xmit_skb
+			 * 一般来讲 vlan 设备调用发包函数后进到该函数中后会走到这里
+			 * 然后这个 validate_xmit_skb 中会通过 validate_xmit_vlan 函数判断是否有 vlan 的标签
+			 * 
+			 * 都满足条件后, 这个函数中会调用 __vlan_hwaccel_push_inside 方法
+			 */
 			skb = validate_xmit_skb(skb, dev, &again);
 			if (!skb)
 				goto out;
@@ -3836,6 +3854,10 @@ static int __dev_queue_xmit(struct sk_buff *skb, struct net_device *sb_dev)
 
 			if (!netif_xmit_stopped(txq)) {
 				dev_xmit_recursion_inc();
+
+				/**
+				 * 5.vlan 设备发送数据.dev_hard_start_xmit 用来使用物理网卡的驱动将报文发送到网卡上
+				 */
 				skb = dev_hard_start_xmit(skb, dev, txq, &rc);
 				dev_xmit_recursion_dec();
 				if (dev_xmit_complete(rc)) {
@@ -3870,6 +3892,8 @@ out:
 
 /**
  * 1.网卡发包. dev_queue_xmit 函数负责接收从内核协议栈下来的数据包, 然后调用 __dev_queue_xmit 给发到网卡上
+ * 
+ * 2.vlan 设备发包.dev_queue_xmit 方法也可以负责将 vlan 设备的 skb 给发出去
  */
 int dev_queue_xmit(struct sk_buff *skb)
 {
@@ -4807,6 +4831,12 @@ static inline int nf_ingress(struct sk_buff *skb, struct packet_type **pt_prev,
  * 
  * 
  *  8.网桥添加设备.__netif_receive_skb_core
+ * 
+ * 
+ * 
+ * 	1.vlan 设备接收数据.__netif_receive_skb_core
+ *  网卡收到包之后, 经过一通骚操作之后要把报文往协议栈里发之前, 一定是调用这个函数
+ * 	然后就可以在这个函数中根据协议的类型来选择对应的协议处理函数
  */
 static int __netif_receive_skb_core(struct sk_buff *skb, bool pfmemalloc,
 				    struct packet_type **ppt_prev)
@@ -4848,8 +4878,14 @@ another_round:
 		skb_reset_mac_len(skb);
 	}
 
-	if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
-	    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
+	if (skb->protocol == cpu_to_be16(ETH_P_8021Q) || // 8021Q 和 8021AD 都是两个协议头
+	    skb->protocol == cpu_to_be16(ETH_P_8021AD)) { // 或者说是一组协议的集合
+
+		/**
+		 * 2.vlan 设备接收数据.skb_vlan_untag 
+		 * 这里可以判断出报文协议头是否带有 vlan
+		 * 如果有的话, 就通过 skb_vlan_untag 函数把这个 tag 给打掉
+		 */
 		skb = skb_vlan_untag(skb);
 		if (unlikely(!skb))
 			goto out;
@@ -4861,9 +4897,6 @@ another_round:
 	if (pfmemalloc)
 		goto skip_taps;
 
-	/**
-	 * 
-	 */
 	list_for_each_entry_rcu(ptype, &ptype_all, list) {
 		if (pt_prev)
 			ret = deliver_skb(skb, pt_prev, orig_dev);
@@ -4892,6 +4925,18 @@ skip_classify:
 	if (pfmemalloc && !skb_pfmemalloc_protocol(skb))
 		goto drop;
 
+	/**
+	 * 3.vlan 设备接收数据.skb_vlan_tag_present
+	 * 在上面那个 skb_vlan_untag 会把 vlan 的 data 中的内容给剥掉
+	 * 但是同时也会调用 __vlan_hwaccel_put_tag 给它打上 vlan_present = 1 的标签
+	 * 
+	 * 然后就会进入 vlan_do_receive 函数
+	 * 在 /net/8021q/vlan_core.c 中
+	 * 
+	 * vlan_do_receive 这个函数中会从 skb -> dev 上尝试着查找是否绑定了 vlan 设备
+	 * 如果没找到也就是说当前接收到这个 skb 的网卡设备没有绑定 vlan 设备的话
+	 * 那就直接这里返回 false
+	 */
 	if (skb_vlan_tag_present(skb)) {
 		if (pt_prev) {
 			ret = deliver_skb(skb, pt_prev, orig_dev);

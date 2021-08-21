@@ -210,6 +210,17 @@ out_vid_del:
 /*  Attach a VLAN device to a mac address (ie Ethernet Card).
  *  Returns 0 if the device was created or a negative error code otherwise.
  */
+
+/**
+ * 1.添加 vlan 设备.register_vlan_device
+ * vlan 设备一般是注册在驱动之上的
+ * 比如最下层有个 e1000 网卡, 然后网卡的数据包被驱动接收后,
+ * 驱动在往上层决定要将 skb 发送给哪个协议的时候, 这个时候如果绑定了 vlan 设备的话, 就会发送给 vlan 的协议
+ * 
+ * vlan 其实算是 ip 层和 mac 层之间的一层, 所以注册在驱动之上, 由驱动发送给 vlan 协议栈挺合理的
+ * 
+ * 当将某个物理网卡绑定到 vlan 设备的时候会调用这个函数
+ */
 static int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
 {
 	struct net_device *new_dev;
@@ -222,12 +233,22 @@ static int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
 	if (vlan_id >= VLAN_VID_MASK)
 		return -ERANGE;
 
+	/**
+	 * 先判断传进来的要和 vlan 设备绑定的设备是不是一个真实的物理网卡
+	 * 如果不是真实的网卡的话则不让绑定
+	 */
 	err = vlan_check_real_dev(real_dev, htons(ETH_P_8021Q), vlan_id,
 				  NULL);
 	if (err < 0)
 		return err;
 
 	/* Gotta set up the fields for the device. */
+
+
+	/**
+	 * 接下来对 vlan 设备进行命名
+	 * 
+	 */
 	switch (vn->name_type) {
 	case VLAN_NAME_TYPE_RAW_PLUS_VID:
 		/* name will look like:	 eth1.0005 */
@@ -253,6 +274,7 @@ static int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
 		snprintf(name, IFNAMSIZ, "vlan%.4i", vlan_id);
 	}
 
+	// 接下来和创建一个普通的网卡差不多, 也是先申请一个 net_device 结构的设备
 	new_dev = alloc_netdev(sizeof(struct vlan_dev_priv), name,
 			       NET_NAME_UNKNOWN, vlan_setup);
 
@@ -272,6 +294,11 @@ static int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
 	vlan->dent = NULL;
 	vlan->flags = VLAN_FLAG_REORDER_HDR;
 
+
+	/**
+	 * 注册 vlan 的 netlink 的回调函数
+	 * 赋值在 /net/8021q/vlan_netlink.c
+	 */
 	new_dev->rtnl_link_ops = &vlan_link_ops;
 	err = register_vlan_dev(new_dev, NULL);
 	if (err < 0)

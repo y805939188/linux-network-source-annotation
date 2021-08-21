@@ -6,6 +6,12 @@
 #include <linux/export.h>
 #include "vlan.h"
 
+
+/**
+ * 4.vlan 设备接收数据.vlan_do_receive
+ * 
+ * 和发包时候相反的, 先将 skb 的 dev 改为 vlan_dev
+ */
 bool vlan_do_receive(struct sk_buff **skbp)
 {
 	struct sk_buff *skb = *skbp;
@@ -37,6 +43,10 @@ bool vlan_do_receive(struct sk_buff **skbp)
 			skb->pkt_type = PACKET_HOST;
 	}
 
+	/**
+	 * 判断是不是 macvlan 端口或者是 桥接 端口
+	 * 不是的话会通过 vlan_insert_inner_tag 把 tag 再添加回来
+	 */
 	if (!(vlan_dev_priv(vlan_dev)->flags & VLAN_FLAG_REORDER_HDR) &&
 	    !netif_is_macvlan_port(vlan_dev) &&
 	    !netif_is_bridge_port(vlan_dev)) {
@@ -56,6 +66,10 @@ bool vlan_do_receive(struct sk_buff **skbp)
 		skb_reset_mac_len(skb);
 	}
 
+
+	/**
+	 * 从这儿开始, 将报文送往上层的协议栈
+	 */
 	skb->priority = vlan_get_ingress_priority(vlan_dev, skb->vlan_tci);
 	__vlan_hwaccel_clear_tag(skb);
 

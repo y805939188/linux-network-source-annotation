@@ -96,6 +96,10 @@ static inline netdev_tx_t vlan_netpoll_send_skb(struct vlan_dev_priv *vlan, stru
 	return NETDEV_TX_OK;
 }
 
+/**
+ * 1.vlan 设备发送数据 vlan_dev_hard_start_xmit
+ * 这个函数是使用 vlan 发送数据的函数
+ */
 static netdev_tx_t vlan_dev_hard_start_xmit(struct sk_buff *skb,
 					    struct net_device *dev)
 {
@@ -109,6 +113,15 @@ static netdev_tx_t vlan_dev_hard_start_xmit(struct sk_buff *skb,
 	 * NOTE: THIS ASSUMES DIX ETHERNET, SPECIFICALLY NOT SUPPORTING
 	 * OTHER THINGS LIKE FDDI/TokenRing/802.3 SNAPs...
 	 */
+
+	/**
+	 * 首先判断该 dev 是不是绑定了一个 vlan 设备
+	 * 然后还会判断是不是需要给该 skb 帮上一个 tag
+	 * 如果需要的话就通过 __vlan_hwaccel_put_tag 给绑上
+	 * 
+	 * __vlan_hwaccel_put_tag 函数中不会对 data 也就是真实的报文数据做修改
+	 * 而是只是单纯地给 skb 的结构体打上一些标签而已 标记上该报文是个 vlan 的报文
+	 */
 	if (veth->h_vlan_proto != vlan->vlan_proto ||
 	    vlan->flags & VLAN_FLAG_REORDER_HDR) {
 		u16 vlan_tci;
@@ -117,11 +130,18 @@ static netdev_tx_t vlan_dev_hard_start_xmit(struct sk_buff *skb,
 		__vlan_hwaccel_put_tag(skb, vlan->vlan_proto, vlan_tci);
 	}
 
+	/**
+	 * 进入到这个函数的时候, 这里的 skb 的 dev 还是 vlan 这个虚拟设备的 dev 结构
+	 * 这里要给他改成真是的设备
+	 */
 	skb->dev = vlan->real_dev;
 	len = skb->len;
 	if (unlikely(netpoll_tx_running(dev)))
 		return vlan_netpoll_send_skb(vlan, skb);
 
+	/**
+	 * 通过该函数将 skb 发送出去
+	 */
 	ret = dev_queue_xmit(skb);
 
 	if (likely(ret == NET_XMIT_SUCCESS || ret == NET_XMIT_CN)) {
@@ -751,13 +771,16 @@ static const struct ethtool_ops vlan_ethtool_ops = {
 	.get_ts_info		= vlan_ethtool_get_ts_info,
 };
 
+/**
+ * 0.添加 vlan 设备.vlan_netdev_ops 上主要注册 vlan 设备的一些钩子
+ */
 static const struct net_device_ops vlan_netdev_ops = {
 	.ndo_change_mtu		= vlan_dev_change_mtu,
 	.ndo_init		= vlan_dev_init,
 	.ndo_uninit		= vlan_dev_uninit,
-	.ndo_open		= vlan_dev_open,
-	.ndo_stop		= vlan_dev_stop,
-	.ndo_start_xmit =  vlan_dev_hard_start_xmit,
+	.ndo_open		= vlan_dev_open, // 打开时候触发的函数
+	.ndo_stop		= vlan_dev_stop, // 关闭的时候触发的函数
+	.ndo_start_xmit =  vlan_dev_hard_start_xmit, // 发送的时候触发的函数
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address	= vlan_dev_set_mac_address,
 	.ndo_set_rx_mode	= vlan_dev_set_rx_mode,
@@ -792,6 +815,11 @@ static void vlan_dev_free(struct net_device *dev)
 	vlan->vlan_pcpu_stats = NULL;
 }
 
+/**
+ * 2.添加 vlan 设备.vlan_setup 用来对 vlan 设备做一些初始化操作
+ * 
+ * 这些初始化操作主要就在 vlan_netdev_ops 中
+ */
 void vlan_setup(struct net_device *dev)
 {
 	ether_setup(dev);

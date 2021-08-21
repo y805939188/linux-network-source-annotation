@@ -279,6 +279,10 @@ static struct net *vlan_get_link_net(const struct net_device *dev)
 	return dev_net(real_dev);
 }
 
+/**
+ * 0.添加 vlan 设备.vlan_link_ops
+ * 这里头负责在 netlink 里头注册 vlan 设备的一些回调函数
+ */
 struct rtnl_link_ops vlan_link_ops __read_mostly = {
 	.kind		= "vlan",
 	.maxtype	= IFLA_VLAN_MAX,
