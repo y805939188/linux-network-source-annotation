@@ -1604,6 +1604,20 @@ static int do_pci_enable_device(struct pci_dev *dev, int bars)
 	if (bridge)
 		pcie_aspm_powersave_config_link(bridge);
 
+	/**
+	 * 网卡属于 PCI 设备, PCI 设备报矿两类空间 (https://blog.csdn.net/qq_41915323/article/details/111810122)
+	 * 一种是 CPU 可以直接访问的控制寄存器空间
+	 * 另一种是 CPU 无法直接访问的配置空间
+	 * 
+	 * 对于配置空间来讲, 当符合 PCI 标准的设备在被加电初始化的时候,
+	 * BIOS 在一些烧录在主板的上的永久性存储空间当众读取 PCI 设备的配置信息
+	 * BIOS 检测 PCI 总线, 一般 PCI 设备会在硬件中描述自己需要的配置信息,
+	 * 比如会描述自己是个什么设备, 自己的版本, 生产商等
+	 * BIOS 就会根据这些信息对其进行初始化的配置, 比如给 PCI 设备分配物理地址
+	 * 并将物理地址就会被 BIOS 写入到设备的配置空间中, 以及给设备分配中断号等
+	 * 
+	 * 
+	 */
 	err = pcibios_enable_device(dev, bars);
 	if (err < 0)
 		return err;
@@ -1670,7 +1684,7 @@ static void pci_enable_bridge(struct pci_dev *dev)
  * 				对于寄存器空间, 在经过内存映射之后可以直接访问与控制
  * 				pci_write_config_xxx 和 pci_read_config_xxx 系列函数可以用来读写网卡的配置空间
  * 				比如开启网卡设备, 就是将网卡的配置空间的 command 位置置为 1
- * 				
+ * 				https://wenku.baidu.com/view/9c59d721dd36a32d737581e3.html
  */
 static int pci_enable_device_flags(struct pci_dev *dev, unsigned long flags)
 {

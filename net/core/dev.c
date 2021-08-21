@@ -9089,6 +9089,9 @@ EXPORT_SYMBOL(netdev_update_lockdep_key);
  *	will not get the same name.
  */
 
+/**
+ * 8.驱动初始化. register_netdevice 函数
+ */
 int register_netdevice(struct net_device *dev)
 {
 	int ret;
@@ -9113,6 +9116,10 @@ int register_netdevice(struct net_device *dev)
 		goto out;
 
 	/* Init, if this function is available */
+
+	/**
+	 * 
+	 */
 	if (dev->netdev_ops->ndo_init) {
 		ret = dev->netdev_ops->ndo_init(dev);
 		if (ret) {
