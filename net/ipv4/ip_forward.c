@@ -61,7 +61,9 @@ static bool ip_exceeds_mtu(const struct sk_buff *skb, unsigned int mtu)
 	return true;
 }
 
-
+/**
+ * 15. ip 协议处理 
+ */
 static int ip_forward_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct ip_options *opt	= &(IPCB(skb)->opt);
@@ -80,9 +82,16 @@ static int ip_forward_finish(struct net *net, struct sock *sk, struct sk_buff *s
 		ip_forward_options(skb);
 
 	skb->tstamp = 0;
+	/**
+	 * 将报文送到 ip 层的发送函数中
+	 */
 	return dst_output(net, sk, skb);
 }
 
+/**
+ * 14. ip 协议处理
+ * 当发现是要将报文转发给其他主机的时候会走这个函数
+ */
 int ip_forward(struct sk_buff *skb)
 {
 	u32 mtu;
@@ -92,6 +101,11 @@ int ip_forward(struct sk_buff *skb)
 	struct net *net;
 
 	/* that should never happen */
+	/**
+	 * 首先进行一些校验检测等
+	 * 比如做校验和的一些检测
+	 * 还有 mtu 的值校验, 看是否需要组装还是直接就要将报文发送
+	 */
 	if (skb->pkt_type != PACKET_HOST)
 		goto drop;
 
@@ -154,6 +168,10 @@ int ip_forward(struct sk_buff *skb)
 	if (net->ipv4.sysctl_ip_fwd_update_priority)
 		skb->priority = rt_tos2priority(iph->tos);
 
+	/**
+	 * 如果校验和啥的都没问题, 然后分片也组装好了或者不需要组装的话
+	 * 就走一下 netfilter 钩子之后进入 ip_forward_finish
+	 */
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_FORWARD,
 		       net, NULL, skb, skb->dev, rt->dst.dev,
 		       ip_forward_finish);

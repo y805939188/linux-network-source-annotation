@@ -1220,7 +1220,7 @@ static int stmmac_test_vlanoff_common(struct stmmac_priv *priv, bool svlan)
 {
 	struct stmmac_packet_attrs attr = { };
 	struct stmmac_test_priv *tpriv;
-	struct sk_buff *skb = NULL;
+	struct sk_b uff *skb = NULL;
 	int ret = 0;
 	u16 proto;
 

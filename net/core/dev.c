@@ -3893,7 +3893,7 @@ out:
 /**
  * 1.网卡发包. dev_queue_xmit 函数负责接收从内核协议栈下来的数据包, 然后调用 __dev_queue_xmit 给发到网卡上
  * 
- * 2.vlan 设备发包.dev_queue_xmit 方法也可以负责将 vlan 设备的 skb 给发出去
+ * 2.vlan 设备发送数据.dev_queue_xmit 方法也可以负责将 vlan 设备的 skb 给发出去
  */
 int dev_queue_xmit(struct sk_buff *skb)
 {

@@ -1618,10 +1618,15 @@ static void rt_set_nexthop(struct rtable *rt, __be32 daddr,
 #endif
 }
 
+/**
+ * 10. ip 协议处理
+ * 通过该函数来创建一条路由条目
+ */
 struct rtable *rt_dst_alloc(struct net_device *dev,
 			    unsigned int flags, u16 type,
 			    bool nopolicy, bool noxfrm, bool will_cache)
 {
+	// 创建一个路由条目, 这个 rtable 被挂在一条链表上
 	struct rtable *rt;
 
 	rt = dst_alloc(&ipv4_dst_ops, dev, 1, DST_OBSOLETE_FORCE_CHK,
@@ -1642,8 +1647,18 @@ struct rtable *rt_dst_alloc(struct net_device *dev,
 		rt->rt_gw4 = 0;
 		INIT_LIST_HEAD(&rt->rt_uncached);
 
+
+		/**
+		 * dst 表示 ip 数据包的路由的目的入口
+		 * input 和 output 是该入口的输入和输出函数
+		 */
 		rt->dst.output = ip_output;
 		if (flags & RTCF_LOCAL)
+		 /**
+		  * 如果是发往本地的话就给一个 ip_local_deliver 的默认函数
+			* 当这个函数结束之后, 如果发现目标 ip 是其他主机的话
+			* 就会将这个 dst.input 修改为 ip_forward
+			*/
 			rt->dst.input = ip_local_deliver;
 	}
 
@@ -1848,6 +1863,10 @@ static int __mkroute_input(struct sk_buff *skb,
 		}
 	}
 
+	/**
+	 * 9. ip 协议处理
+	 * 通过该函数来创建一条路由条目
+	 */
 	rth = rt_dst_alloc(out_dev->dev, 0, res->type,
 			   IN_DEV_CONF_GET(in_dev, NOPOLICY),
 			   IN_DEV_CONF_GET(out_dev, NOXFRM), do_cache);
@@ -1859,6 +1878,11 @@ static int __mkroute_input(struct sk_buff *skb,
 	rth->rt_is_input = 1;
 	RT_CACHE_STAT_INC(in_slow_tot);
 
+	/**
+	 * 11. ip 协议处理
+	 * 在 rt_dst_alloc 会给 dst.input 一个默认的发往本地的处理函数
+	 * 这里如果不是发往本地的话就修改为 ip_forward
+	 */
 	rth->dst.input = ip_forward;
 
 	rt_set_nexthop(rth, daddr, res, fnhe, res->fi, res->type, itag,
@@ -2006,6 +2030,9 @@ int fib_multipath_hash(const struct net *net, const struct flowi4 *fl4,
 }
 #endif /* CONFIG_IP_ROUTE_MULTIPATH */
 
+/**
+ * 8. ip 协议处理
+ */
 static int ip_mkroute_input(struct sk_buff *skb,
 			    struct fib_result *res,
 			    struct in_device *in_dev,
@@ -2035,6 +2062,9 @@ static int ip_mkroute_input(struct sk_buff *skb,
  *	called with rcu_read_lock()
  */
 
+/**
+ * 7. ip 协议处理
+ */
 static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 			       u8 tos, struct net_device *dev,
 			       struct fib_result *res)
@@ -2146,6 +2176,10 @@ static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 	if (res->type != RTN_UNICAST)
 		goto martian_destination;
 
+
+/**
+ * 上面那一坨先看是否路由表中已经存在路由信息, 没有的话通过下面的函数创建一条路由表信息
+ */ 
 make_route:
 	err = ip_mkroute_input(skb, res, in_dev, daddr, saddr, tos, flkeys);
 out:	return err;
@@ -2244,6 +2278,9 @@ martian_source:
 	goto out;
 }
 
+/**
+ * 5. ip 协议处理
+ */
 int ip_route_input_noref(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 			 u8 tos, struct net_device *dev)
 {
@@ -2260,6 +2297,9 @@ int ip_route_input_noref(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 EXPORT_SYMBOL(ip_route_input_noref);
 
 /* called with rcu_read_lock held */
+/**
+ * 6. ip 协议处理
+ */
 int ip_route_input_rcu(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 		       u8 tos, struct net_device *dev, struct fib_result *res)
 {
@@ -2273,6 +2313,10 @@ int ip_route_input_rcu(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 	   comparing with route cache reject entries.
 	   Note, that multicast routers are not affected, because
 	   route cache entry is created eventually.
+	 */
+
+	/**
+	 * 先判断是否是组播的地址, 就是 ip 地址如果都是 0 的话, 就是组播地址
 	 */
 	if (ipv4_is_multicast(daddr)) {
 		struct in_device *in_dev = __in_dev_get_rcu(dev);
@@ -2307,6 +2351,9 @@ int ip_route_input_rcu(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 		return err;
 	}
 
+	/**
+	 * 如果不是组播地址的 ip 的话就进入这里
+	 */
 	return ip_route_input_slow(skb, daddr, saddr, tos, dev, res);
 }
 

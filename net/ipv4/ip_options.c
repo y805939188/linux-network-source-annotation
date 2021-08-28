@@ -475,6 +475,10 @@ error:
 }
 EXPORT_SYMBOL(__ip_options_compile);
 
+/**
+ * 2. ip 协议 options 处理
+ * 通过 __ip_options_compile 方法进行一个大的循环来介意 options 字段
+ */
 int ip_options_compile(struct net *net,
 		       struct ip_options *opt, struct sk_buff *skb)
 {

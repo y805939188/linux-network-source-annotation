@@ -184,6 +184,10 @@ bool ip_call_ra_chain(struct sk_buff *skb)
 
 INDIRECT_CALLABLE_DECLARE(int udp_rcv(struct sk_buff *));
 INDIRECT_CALLABLE_DECLARE(int tcp_v4_rcv(struct sk_buff *));
+/**
+ * 19. ip 协议处理
+ * 该方法从该报文中查找上层协议是啥, 查找到了就往上送
+ */
 void ip_protocol_deliver_rcu(struct net *net, struct sk_buff *skb, int protocol)
 {
 	const struct net_protocol *ipprot;
@@ -201,6 +205,9 @@ resubmit:
 			}
 			nf_reset_ct(skb);
 		}
+		/**
+		 * 根据上边传进来的那个 protocol 来进行协议的处理
+		 */
 		ret = INDIRECT_CALL_2(ipprot->handler, tcp_v4_rcv, udp_rcv,
 				      skb);
 		if (ret < 0) {
@@ -223,11 +230,20 @@ resubmit:
 	}
 }
 
+/**
+ * 18. ip 协议处理
+ */
 static int ip_local_deliver_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
+	/**
+	 * 首先将 skb 报文中的一些指针调整到传输层协议的位置
+	 */
 	__skb_pull(skb, skb_network_header_len(skb));
 
 	rcu_read_lock();
+	/**
+	 * 该函数中查找该报文的上层传输层协议是啥
+	 */
 	ip_protocol_deliver_rcu(net, skb, ip_hdr(skb)->protocol);
 	rcu_read_unlock();
 
@@ -237,6 +253,11 @@ static int ip_local_deliver_finish(struct net *net, struct sock *sk, struct sk_b
 /*
  * 	Deliver IP Packets to the higher protocol layers.
  */
+
+/**
+ * 17. ip 协议处理
+ * 这个函数是如果查完表发现是本地路由的话, 就会走到这里
+ */
 int ip_local_deliver(struct sk_buff *skb)
 {
 	/*
@@ -244,6 +265,10 @@ int ip_local_deliver(struct sk_buff *skb)
 	 */
 	struct net *net = dev_net(skb->dev);
 
+	/**
+	 * 1. ip 协议分段
+	 * 先看是否分帧了, 如果分帧的话要进行重组
+	 */
 	if (ip_is_fragment(ip_hdr(skb))) {
 		if (ip_defrag(net, skb, IP_DEFRAG_LOCAL_DELIVER))
 			return 0;
@@ -254,6 +279,16 @@ int ip_local_deliver(struct sk_buff *skb)
 		       ip_local_deliver_finish);
 }
 
+/**
+ * 1. ip 协议 options 处理
+ * options 字段是 ip 协议和 tcp 协议头里都用的东西
+ * 主要用来让用户对协议可以做一些额外的操作
+ * 一般 ip 协议的 options 字段用的比较少
+ * tcp 的 options 字段的一些选项可以用来控制比如“窗口扩大系数”, “md5 校验”等
+ * 或者有一些额外的 options 选项可以用来做一些科研实验
+ * 另外有一些字段比较重要比如 options 中有 timestamp 时间戳
+ * 发送方往 options 里放, 接收方可根据这个时间戳来算出 RTT, 也就是时延
+ */
 static inline bool ip_rcv_options(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ip_options *opt;
@@ -275,11 +310,22 @@ static inline bool ip_rcv_options(struct sk_buff *skb, struct net_device *dev)
 	opt = &(IPCB(skb)->opt);
 	opt->optlen = iph->ihl*4 - sizeof(struct iphdr);
 
+	/**
+	 * 通过该方法进行 options 的解析
+	 */
 	if (ip_options_compile(dev_net(dev), opt, skb)) {
 		__IP_INC_STATS(dev_net(dev), IPSTATS_MIB_INHDRERRORS);
 		goto drop;
 	}
 
+	/**
+	 * 接下来进行一个 原路由
+	 * 这个原路由就是用户可以自己在 options 字段指定下(下...)一跳的路径
+	 * 就是可以不按照默认的走
+	 * options 中还可以指定松散路由或者严格路由
+	 * 松散就是说“想往 A 发送，中间可以有其他路由器”
+	 * 严格就是说“想往 A 发送，中间不能有其他路由器”
+	 */
 	if (unlikely(opt->srr)) {
 		struct in_device *in_dev = __in_dev_get_rcu(dev);
 
@@ -304,6 +350,9 @@ drop:
 
 INDIRECT_CALLABLE_DECLARE(int udp_v4_early_demux(struct sk_buff *));
 INDIRECT_CALLABLE_DECLARE(int tcp_v4_early_demux(struct sk_buff *));
+/**
+ * 4. ip 协议处理
+ */
 static int ip_rcv_finish_core(struct net *net, struct sock *sk,
 			      struct sk_buff *skb, struct net_device *dev)
 {
@@ -312,6 +361,17 @@ static int ip_rcv_finish_core(struct net *net, struct sock *sk,
 	struct rtable *rt;
 	int err;
 
+	/**
+	 * 对 skb 做预分流处理
+	 * 之前是所有的 skb 都会走一遍路由子系统
+	 * 但是每个 skb 都走的话很耗费 cpu 资源
+	 * 所以之后就尝试直接在 skb 中保存一些信息
+	 * 比如当访问的就是 local 的时候就把这些信息保存在 skb 中
+	 * 这样的这里做一些预处理, 就不用所有的包都走路由子系统了
+	 * 
+	 * 看看 skb 中是否保存了一些比如“要访问本地”之类的信息
+	 * 有的话直接送入 udp 或 tcp 的协议栈
+	 */
 	if (net->ipv4.sysctl_ip_early_demux &&
 	    !skb_dst(skb) &&
 	    !skb->sk &&
@@ -335,6 +395,9 @@ static int ip_rcv_finish_core(struct net *net, struct sock *sk,
 	 *	how the packet travels inside Linux networking.
 	 */
 	if (!skb_valid_dst(skb)) {
+		/**
+		 * 该函数就是用来进入路由子系统的入口
+		 */
 		err = ip_route_input_noref(skb, iph->daddr, iph->saddr,
 					   iph->tos, dev);
 		if (unlikely(err))
@@ -352,6 +415,9 @@ static int ip_rcv_finish_core(struct net *net, struct sock *sk,
 	}
 #endif
 
+	/**
+	 * 这里要对 options 字段进行一些处理
+	 */
 	if (iph->ihl > 5 && ip_rcv_options(skb, dev))
 		goto drop;
 
@@ -396,6 +462,10 @@ drop_error:
 	goto drop;
 }
 
+/**
+ * 3. ip 协议处理
+ * 
+ */
 static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_device *dev = skb->dev;
@@ -404,18 +474,27 @@ static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 	/* if ingress device is enslaved to an L3 master device pass the
 	 * skb to its handler for processing
 	 */
+	// 尝试使用三层设备进行处理, 比如 tap 设备
 	skb = l3mdev_ip_rcv(skb);
 	if (!skb)
 		return NET_RX_SUCCESS;
 
 	ret = ip_rcv_finish_core(net, sk, skb, dev);
 	if (ret != NET_RX_DROP)
+		/**
+		 * 12. ip 协议处理
+		 * 当在 ip_rcv_finish_core 中从路由表中查找到条目之后, 并且给 dev->dst.input 以及 output 都赋上值了之后
+		 * 函数出栈之后会走到这里
+		 */
 		ret = dst_input(skb);
 	return ret;
 }
 
 /*
  * 	Main IP Receive routine.
+ */
+/**
+ * 2. ip 协议处理.
  */
 static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 {
@@ -430,6 +509,7 @@ static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 
 	__IP_UPD_PO_STATS(net, IPSTATS_MIB_IN, skb->len);
 
+	// 首先对 skb 做一些校验，看看是否还有别的地儿引用了 skb
 	skb = skb_share_check(skb, GFP_ATOMIC);
 	if (!skb) {
 		__IP_INC_STATS(net, IPSTATS_MIB_INDISCARDS);
@@ -439,6 +519,7 @@ static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 	if (!pskb_may_pull(skb, sizeof(struct iphdr)))
 		goto inhdr_error;
 
+	// 拿到头部
 	iph = ip_hdr(skb);
 
 	/*
@@ -467,6 +548,7 @@ static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 
 	iph = ip_hdr(skb);
 
+	// 通过 ip_fast_csum 对头部做循环检测来判断是否是一个完整并且无错的 ip 报文
 	if (unlikely(ip_fast_csum((u8 *)iph, iph->ihl)))
 		goto csum_error;
 
@@ -481,6 +563,8 @@ static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 	 * is IP we can trim to the true length of the frame.
 	 * Note this now means skb->len holds ntohs(iph->tot_len).
 	 */
+
+	// 干掉填充位, 因为发过来的时候为了对齐会做一些填充
 	if (pskb_trim_rcsum(skb, len)) {
 		__IP_INC_STATS(net, IPSTATS_MIB_INDISCARDS);
 		goto drop;
@@ -494,6 +578,7 @@ static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 	IPCB(skb)->iif = skb->skb_iif;
 
 	/* Must drop socket now because of tproxy. */
+	// 对路由结构做一个初始化, 然后退出这个函数, 进入 ip_rcv_finish 方法
 	skb_orphan(skb);
 
 	return skb;
@@ -511,11 +596,15 @@ out:
 /*
  * IP receive entry point
  */
+/**
+ * 1. ip 协议处理
+ * 这个就是链路层处理完后要经过的第一个网络层函数
+ */
 int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt,
 	   struct net_device *orig_dev)
 {
 	struct net *net = dev_net(dev);
-
+	
 	skb = ip_rcv_core(skb, net);
 	if (skb == NULL)
 		return NET_RX_DROP;

@@ -182,6 +182,47 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 }
 EXPORT_SYMBOL_GPL(ip_build_and_send_pkt);
 
+/**
+ * 4. ip 协议发送报文
+ * 该方法可能是当小于 mtu 时直接调用
+ * 也可能是大于 mtu 时分帧完了循环调用的
+ * 
+ * 
+ * ip_finish_output2 方法中主要调用 ip_neigh_for_gw 方法
+ * 在邻居子系统(或者叫邻接子系统中查找路由地址是否在当前链路中)
+ * 
+ * 邻居子系统是 网络层 → 链路层 的一个桥梁
+ * 在真正调用 dev_queue_xmit 将报文发送到链路层之前
+ * 会先走 邻接子系统
+ * 邻接子系统就是在局域网中的主机之中维护这一张表叫邻居表
+ * 邻居表中维护的是和当前主机相连的主机的 ip 地址与 mac 地址的对应关系
+ * 表中的每一项, 都称为 neigh_ 条目
+ * 每个 netgh_ 条目上都挂着一个回调函数叫 output
+ * ip 层在邻居表中找到要往谁那里发之后, 就会调用这个 output 函数
+ * output 函数是个指针, 在邻居子系统中会维护一个状态机
+ * 这个状态机管理者表中每个目标的状态, 比如是否老化等等
+ * 然后这个 output 函数就会根据每个目标的状态来选择不同的函数指针
+ * 然后由 ip 层调用
+ * 这个 output 中最终也要调用 dev_queue_xmit 将报文发送到链路层
+ * 
+ * 
+ * 邻居子系统同时兼容 ARP 协议用于 ipv4
+ * 也兼容 NDP 协议用于 ipv6
+ * 当然也可以创造自己的地址解析协议
+ * 
+ * 
+ * 
+ * 邻居子系统中维护一个状态机
+ * 首先是有三种创建表项的类型
+ * 第一种是用户通过命令直接创建(如 arp -s)
+ * 第二种是不需要邻居子系统, 也就是在发送报文的时候直接就把报头填充好了
+ * 第三种就是最常见的创建一个但是还无状态, 也就是需要通过 arp 或者 ndp 来进行 ip 到 mac 的解析, 也包括需要解析是否在同一个局域网中
+ *   	对于这第三种情况, 首先邻居系统尝试使用 arp 之类的协议发送请求, 如果有人回复就表明邻居可达
+ * 		如果没回复就超时重试, 多次重试之后还没回应就表示邻居不可达
+ * 
+ * 
+ * 
+ */
 static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct dst_entry *dst = skb_dst(skb);
@@ -219,9 +260,16 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 	}
 
 	rcu_read_lock_bh();
+
+	/**
+	 * 最主要的是使用邻居子系统
+	 * 查看路由的地址是否在当前的链路中
+	 * 
+	 * 如果是的话就通过 dev_queue_xmit 把报文发送到链路层中
+	 */
 	neigh = ip_neigh_for_gw(rt, skb, &is_v6gw);
 	if (!IS_ERR(neigh)) {
-		int res;
+		int res; 
 
 		sock_confirm_neigh(skb, neigh);
 		/* if crossing protocols, can not use the cached header */
@@ -287,6 +335,9 @@ static int ip_finish_output_gso(struct net *net, struct sock *sk,
 	return ret;
 }
 
+/**
+ * 3. ip 协议发送报文
+ */
 static int __ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	unsigned int mtu;
@@ -299,15 +350,28 @@ static int __ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *
 	}
 #endif
 	mtu = ip_skb_dst_mtu(sk, skb);
+	/**
+	 * 看硬件是否直接就支持分帧
+	 * 如果支持的话直接把报文发到硬件上进行分帧
+	 */
 	if (skb_is_gso(skb))
 		return ip_finish_output_gso(net, sk, skb, mtu);
 
+	/**
+	 * 硬件不支持的话并且要分帧的话就进行软件的分帧
+	 * ip_fragment 方法中会调用 ip_do_fragment
+	 * 该方法中会将报文分割成一个一个不大于 mtu 的片段
+	 * 然后循环地调用 ip_finish_output2 将报文发出去
+	 */
 	if (skb->len > mtu || (IPCB(skb)->flags & IPSKB_FRAG_PMTU))
 		return ip_fragment(net, sk, skb, mtu, ip_finish_output2);
 
 	return ip_finish_output2(net, sk, skb);
 }
 
+/**
+ * 2. ip 协议发送报文
+ */
 static int ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	int ret;
@@ -420,6 +484,15 @@ int ip_mc_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 			    !(IPCB(skb)->flags & IPSKB_REROUTED));
 }
 
+/**
+ * 1. ip 协议发送报文
+ * 首相报文从传输层下来之后, 会先在路由子系统中根据目标 ip 选择一个对应的路由条目
+ * 也就是 dev->dst
+ * 之后调用 output
+ * 也就是 dst->output
+ * 这个是在创建这个路由条目时赋值的
+ * 也就是 ip_output 这个函数
+ */
 int ip_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_device *dev = skb_dst(skb)->dev;
