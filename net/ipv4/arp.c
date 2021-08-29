@@ -672,6 +672,9 @@ static bool arp_is_garp(struct net *net, struct net_device *dev,
  *	Process an arp request.
  */
 
+/**
+ * 2. arp 协议处理
+ */
 static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_device *dev = skb->dev;
@@ -795,12 +798,25 @@ static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
  *  cache.
  */
 
+	/**
+	 * 看是否是隧道设备
+	 */
 	if (arp->ar_op == htons(ARPOP_REQUEST) && skb_metadata_dst(skb))
 		reply_dst = (struct dst_entry *)
 			    iptunnel_metadata_reply(skb_metadata_dst(skb),
 						    GFP_ATOMIC);
 
 	/* Special case: IPv4 duplicate address detection packet (RFC2131) */
+
+	/**
+	 * 如果源 ip 地址是 0 的话, 就直接 arp_send_dst 发送一个 replay 的 arp
+	 * https://www.zhihu.com/question/26949528
+	 * DHCP 在获取 ip 地址后 会发送 arp request 广播到局域网内
+	 * 以发现是否有配置相同 ip 地址的主机
+	 * 当局域网内存在相同 ip 主机时 该主机就会回应 arp reply
+	 * 这样就会发现 ip 冲突
+	 * 此时DHCP client 会发送 DHCPDECLINE 给路由器要求重新分配ip地址
+	 */
 	if (sip == 0) {
 		if (arp->ar_op == htons(ARPOP_REQUEST) &&
 		    inet_addr_type_dev_table(net, dev, tip) == RTN_LOCAL &&
@@ -810,6 +826,21 @@ static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
 		goto out_consume_skb;
 	}
 
+	/**
+	 * 这里是正常的 ip 不为 0 的时候走到这里
+	 * 先通过 ip_route_input_noref 查找路由表
+	 * 看目标是本地啊还是要发往别的主机
+	 * 
+	 * arp_ignore 中会通过 IN_DEV_ARP_IGNORE 方法
+	 * 从 /proc/sys/net/ipv4/conf/eth0/arp_ignore 文件中拿值
+	 * 通常可以通过文件系统对 arp_ignore 这个内核参数做配置
+	 * 这里如果设置为 0 的话就直接返回 0
+	 * 所以这里的 dont_send 是 0
+	 * IN_DEV_ARPFILTER 也是 从 /proc/sys/net/ipv4/conf/eth0/arp_filter 中拿值
+	 * 如果当 arp_filter 也为 0 的时候表示不过滤
+	 * 所以就会直接进入到 if (!dont_send) 的逻辑
+	 * 使用 arp_send_dst 进行 arp 的 reply
+	 */
 	if (arp->ar_op == htons(ARPOP_REQUEST) &&
 	    ip_route_input_noref(skb, tip, sip, 0, dev) == 0) {
 
@@ -821,8 +852,31 @@ static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
 
 			dont_send = arp_ignore(in_dev, sip, tip);
 			if (!dont_send && IN_DEV_ARPFILTER(in_dev))
+				/**
+				 * 在 arp_filter 中, 会通过 ip_route_output 方法查询路由表
+				 * rt = ip_route_output()
+				 * rt 就查询到的路由表项
+				 * 然后用 rt->dst.dev 可以知道这个路由信息是绑定在哪个网络设备上的
+				 * if (rt->dst.dev != dev) {
+				 * 		__NET_INC_STATS(net, LINUX_MIB_ARPFILTER);
+				 *		flag = 1;
+				 * }
+				 * dev 是接受到这个 arp 请求的网络设备
+				 * 用这个路由项的设备和接受到 arp 请求的设备作对比
+				 * 如果是同一台设备的话 flag 会是 0, 也就是说这里的 dont_send 是 0
+				 * 也就是发送
+				 * 否则 flag 为 1, 相当于就是判断目标 ip 所绑定的网络设备和接收到 arp 的设备是否是同一台
+				 */
 				dont_send = arp_filter(sip, tip, dev);
 			if (!dont_send) {
+				/**
+				 * neigh_event_ns 方法中先通过 __neigh_lookup 方法进行邻居表项的查找
+				 * 根据源 ip 和源 mac 进行查找, 看是否在当前主机上已经存在源 ip 和源 mac
+				 * 的邻居表项
+				 * 如果找到直接返回, 没找到会调用 neigh_create 创建这么一个表项
+				 * 之后再使用 neigh_update 方法将源 ip 以及源 mac 的映射表项添加到本机的邻居表中
+				 * 之后返回后这里的 n 就是这个表项
+				 */
 				n = neigh_event_ns(&arp_tbl, sha, &sip, dev);
 				if (n) {
 					arp_send_dst(ARPOP_REPLY, ETH_P_ARP,
@@ -862,6 +916,12 @@ static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
 
 	/* Update our ARP tables */
 
+	/**
+	 * 走到这里的话, 说明接收到的是 replay 的报文
+	 * 首先通过 __neigh_lookup 查找一下本机上是否已经存在发送方的 ip 和 mac 的表项
+	 * 
+	 * 第四个参数的 0 表示只查找不创建
+	 */
 	n = __neigh_lookup(&arp_tbl, &sip, dev, 0);
 
 	addr_type = -1;
@@ -886,6 +946,9 @@ static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
 			n = __neigh_lookup(&arp_tbl, &sip, dev, 1);
 	}
 
+	/**
+	 * 走到这里有 n 的话说明查找到了这个表项
+	 */
 	if (n) {
 		int state = NUD_REACHABLE;
 		int override;
@@ -933,6 +996,11 @@ static void parp_redo(struct sk_buff *skb)
  *	Receive an arp request from the device layer.
  */
 
+/**
+ * 1. arp 协议处理
+ * 当在链路层对链路层协议处理完成之后会根据 protocol 类型把 skb 往协议栈发送
+ * 如果发现协议是 arp 协议的话就交给这个函数
+ */
 static int arp_rcv(struct sk_buff *skb, struct net_device *dev,
 		   struct packet_type *pt, struct net_device *orig_dev)
 {
@@ -944,6 +1012,10 @@ static int arp_rcv(struct sk_buff *skb, struct net_device *dev,
 	    skb->pkt_type == PACKET_LOOPBACK)
 		goto consumeskb;
 
+	/**
+	 * 和 ipv4 处理同样的, 看这个 skb 报文是否在其他地方被进行了引用
+	 * 如果在其他地方被引用了, 那就进行一下报文的复制, 从而避免并发的问题
+	 */
 	skb = skb_share_check(skb, GFP_ATOMIC);
 	if (!skb)
 		goto out_of_mem;
