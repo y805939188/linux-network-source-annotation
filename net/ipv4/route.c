@@ -2063,6 +2063,7 @@ static int ip_mkroute_input(struct sk_buff *skb,
  */
 
 /**
+ * 上面那坨注释表示会丢弃所有的从本地比如 0.0.0.0 或 127.0.0.1 发过来的包
  * 7. ip 协议处理
  */
 static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
@@ -2145,6 +2146,12 @@ static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 		fl4.fl4_dport = 0;
 	}
 
+	/**
+	 * 上边那一大坨就是通过检测 ip 的源和目的地址来判断包的合理性, 从而进行一些不同的逻辑
+	 * 
+	 * 然后这里的 fib_lookup 就是查本地路由表
+	 * 如果没有找到的话通过 IN_DEV_FORWARD 判断一下是否允许 forward
+	 */
 	err = fib_lookup(net, &fl4, res, 0);
 	if (err != 0) {
 		if (!IN_DEV_FORWARD(in_dev))
@@ -2162,6 +2169,10 @@ static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 	}
 
 	if (res->type == RTN_LOCAL) {
+		/**
+		 * 如果是发给本机的包儿就验证一下源地址是否合法
+		 * 然后跳转到 local_input
+		 */
 		err = fib_validate_source(skb, saddr, daddr, tos,
 					  0, dev, in_dev, &itag);
 		if (err < 0)
@@ -2178,7 +2189,12 @@ static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 
 
 /**
- * 上面那一坨先看是否路由表中已经存在路由信息, 没有的话通过下面的函数创建一条路由表信息
+ * 如果上面那一大坨逻辑都没走到的话, 也就是说既不是广播也不是本机也允许转发的话
+ * 就直接进入 make_route
+ * 当查到的路由类型是指向远端的主机，把此路由加入 cache 中
+ * 
+ * 这个 ip_mkroute_input 干的大概的事情就是
+ * 给这个路由创建一个 dst 条目, 给这个 dst 上的 output 和 input 附上初始函数
  */ 
 make_route:
 	err = ip_mkroute_input(skb, res, in_dev, daddr, saddr, tos, flkeys);
