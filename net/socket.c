@@ -1524,10 +1524,12 @@ EXPORT_SYMBOL(sock_create_kern);
  * 主要就是调用 sock_create
  * 
  * 
- * socket 是整个协议簇的操作
- * sock 是协议簇中单独某个协议的操作
- * 
  * socket 中包含 sock
+ * sock 中的 ops 定了某个协议的具体操作函数
+ * 
+ * 首先进程的 task_struct 结构中有 files_struct 结构
+ * files_struct 结构中有 fd_arrays[] 里头有当前进程打开的所有文件的描述符
+ * 然后 fd_arrays 中对应描述符就可以找到 socket_filte_ops
  */
 int __sys_socket(int family, int type, int protocol)
 {
