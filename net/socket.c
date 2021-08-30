@@ -632,6 +632,14 @@ INDIRECT_CALLABLE_DECLARE(int inet_sendmsg(struct socket *, struct msghdr *,
 					   size_t));
 INDIRECT_CALLABLE_DECLARE(int inet6_sendmsg(struct socket *, struct msghdr *,
 					    size_t));
+
+
+
+/**
+ * 3. socket sendto 系统调用
+ * 
+ * 根据协议类型调用 ipv6(inet6_sendmsg) 或者 ipv4(inet_sendmsg)
+ */
 static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
 {
 	int ret = INDIRECT_CALL_INET(sock->ops->sendmsg, inet6_sendmsg,
@@ -648,6 +656,12 @@ static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
  *
  *	Sends @msg through @sock, passing through LSM.
  *	Returns the number of bytes sent, or an error code.
+ */
+
+/**
+ * 2. socket sendto 系统调用
+ * 
+ * 主要调用 sock_sendmsg_nosec
  */
 int sock_sendmsg(struct socket *sock, struct msghdr *msg)
 {
@@ -1344,6 +1358,10 @@ EXPORT_SYMBOL(sock_wake_async);
  *	This function internally uses GFP_KERNEL.
  */
 
+
+/**
+ * 2. socket create 系统调用
+ */
 int __sock_create(struct net *net, int family, int type, int protocol,
 			 struct socket **res, int kern)
 {
@@ -1379,6 +1397,8 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 *	the protocol is 0, the family is instructed to select an appropriate
 	 *	default.
 	 */
+
+	// 先分配一块儿 socket 的空间
 	sock = sock_alloc();
 	if (!sock) {
 		net_warn_ratelimited("socket: no more sockets\n");
@@ -1400,6 +1420,12 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 #endif
 
 	rcu_read_lock();
+	
+
+	// 然后根据传进来的用户自己选择的协议簇来拿到协议簇的数组
+	// 这个数组中就定义了每个协议簇都是由哪些协议组成的
+	// 以 ipv4 为例
+	// /net/ipv4/af_inet.c 中的 inet_family_ops 就是他的协议簇
 	pf = rcu_dereference(net_families[family]);
 	err = -EAFNOSUPPORT;
 	if (!pf)
@@ -1415,6 +1441,10 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	/* Now protected by module ref count */
 	rcu_read_unlock();
 
+
+
+	// 当找到协议簇的数组也就是协议的集合之后调用协议簇的 create 方法
+	// inet_family_ops 这种结构体上就有 create 方法
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
 		goto out_module_put;
@@ -1488,6 +1518,17 @@ int sock_create_kern(struct net *net, int family, int type, int protocol, struct
 }
 EXPORT_SYMBOL(sock_create_kern);
 
+
+/**
+ * 1. socket create 系统调用
+ * 主要就是调用 sock_create
+ * 
+ * 
+ * socket 是整个协议簇的操作
+ * sock 是协议簇中单独某个协议的操作
+ * 
+ * socket 中包含 sock
+ */
 int __sys_socket(int family, int type, int protocol)
 {
 	int retval;
@@ -1917,6 +1958,11 @@ SYSCALL_DEFINE3(getpeername, int, fd, struct sockaddr __user *, usockaddr,
  *	Send a datagram to a given address. We move the address into kernel
  *	space and check the user space data area is readable before invoking
  *	the protocol.
+ */
+
+/**
+ * 1. socket sendto 系统调用
+ * 主要调用 sock_sendmsg 
  */
 int __sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags,
 		 struct sockaddr __user *addr,  int addr_len)

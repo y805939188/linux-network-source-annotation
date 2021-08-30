@@ -244,6 +244,10 @@ EXPORT_SYMBOL(inet_listen);
  *	Create an inet socket.
  */
 
+
+/**
+ * 3. socket create 系统调用
+ */
 static int inet_create(struct net *net, struct socket *sock, int protocol,
 		       int kern)
 {
@@ -264,6 +268,14 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 lookup_protocol:
 	err = -ESOCKTNOSUPPORT;
 	rcu_read_lock();
+
+	// 首先根据 sock->type 也就是协议簇的类型查找协议栈
+	// 协议栈就是表示这个协议簇中可使用的各种协议
+	// 比如 ipv4 的话这里从 inetsw 中拿到的就是 inetsw_array
+	// 这里的 protocol 就是用户层在调用 socket 时候自己传进来的
+	// 这个循环的作用是遍历协议簇的协议栈, 然后把每个协议往 answer 里头塞
+	// 如果发现遍历到了和用户传进来的 protocol 一样的协议的时候
+	// answer 就是这个协议
 	list_for_each_entry_rcu(answer, &inetsw[sock->type], list) {
 
 		err = 0;
@@ -310,6 +322,12 @@ lookup_protocol:
 	    !ns_capable(net->user_ns, CAP_NET_RAW))
 		goto out_rcu_unlock;
 
+
+	// 将 sock 的 各种东西 置为协议栈的各种东西
+	// 协议簇中的每个协议都有自己的 ops/prot/flags
+	// 这个 ops 就是这个协议的操作集
+	// 操作集上有类似 sendmsg recvmsg 之类的方法的指针
+	// 如果想实现自定义的私有套接字协议簇的话, 也是需要自己实现这个 ops 操作集上的方法的
 	sock->ops = answer->ops;
 	answer_prot = answer->prot;
 	answer_flags = answer->flags;
@@ -318,6 +336,8 @@ lookup_protocol:
 	WARN_ON(!answer_prot->slab);
 
 	err = -ENOBUFS;
+
+	// 根据 answer 的类型创建出一个 sock
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
@@ -797,6 +817,20 @@ int inet_send_prepare(struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(inet_send_prepare);
 
+
+/**
+ * 4. socket sendto 系统调用
+ * 
+ * 会调用传输层协议的 sendmsg
+ * 也就是说 sk->sk_prot->sendmsg
+ * 有可能用 tcp
+ * 也有可能 udp
+ * 
+ * 
+ * 接收时候也就是 recvmsg 的时候反过来
+ * 先看协议簇中的协议是 ipv 几
+ * 然后调用 inet_recvmsg 或 inet6_recvmsg
+ */
 int inet_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 {
 	struct sock *sk = sock->sk;
