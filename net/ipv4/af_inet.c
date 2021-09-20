@@ -247,7 +247,64 @@ EXPORT_SYMBOL(inet_listen);
 
 /**
  * 3. socket create 系统调用
+ * sock 上有调用 socket(family, type, protocol) 中的第二个参数 type
+ * 
+ * inetsw_array 是一早就写死在代码中的
+ * 然后在 inet_init 也就是初始化网卡收包流程的函数中
+ * 通过 inet_register_protosw 方法把 inetsw_array 注册到 inetsw 上
+ * 对应的 ipv6 也有自己的 inetsw6 以及自己的注册方法
+ * 
+ * inet_create 方法中根据传进来的 sock -> type 从 inetsw_array 上头遍历
+ * 相当于说从一开始内核中就定义好了 ipv4 这种协议簇能使用的传输层协议的 type
+ * 然后每种 type 又对应着不同的协议
+ * 相同的 type 可能对应着不同的 protocol, 所以这也是 socket 接口留了第三个 protocol 参数的原因
+ * 之后在 inet_create 中遍历这些提前定义好的 inetsw_array 中的元素
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 简单来说就是每种协议簇都可以使用不同的 type 但是能使用的 type 种类是固定的
+ * 然后每种 type 对应的上层协议栈是不一样或者一样的
+ * 
+ * 所以 socket(协议簇, 协议簇要有链接还是无连接等, 同一个类型的链接可能有多种协议可选择)
+ * 比如面向无连接的时候, 传输层可以选择 UDP 或者 ICMP
  */
+// static struct inet_protosw inetsw_array[] =
+// {
+// 	{
+// 		.type =       SOCK_STREAM,
+// 		.protocol =   IPPROTO_TCP,
+// 		.prot =       &tcp_prot,
+// 		.ops =        &inet_stream_ops,
+// 		.flags =      INET_PROTOSW_PERMANENT |
+// 			      INET_PROTOSW_ICSK,
+// 	},
+
+// 	{
+// 		.type =       SOCK_DGRAM,
+// 		.protocol =   IPPROTO_UDP,
+// 		.prot =       &udp_prot,
+// 		.ops =        &inet_dgram_ops,
+// 		.flags =      INET_PROTOSW_PERMANENT,
+//        },
+
+//        {
+// 		.type =       SOCK_DGRAM,
+// 		.protocol =   IPPROTO_ICMP,
+// 		.prot =       &ping_prot,
+// 		.ops =        &inet_sockraw_ops,
+// 		.flags =      INET_PROTOSW_REUSE,
+//        },
+
+//        {
+// 	       .type =       SOCK_RAW,
+// 	       .protocol =   IPPROTO_IP,	/* wild card */
+// 	       .prot =       &raw_prot,
+// 	       .ops =        &inet_sockraw_ops,
+// 	       .flags =      INET_PROTOSW_REUSE,
+//        }
+// };
 static int inet_create(struct net *net, struct socket *sock, int protocol,
 		       int kern)
 {
@@ -326,9 +383,17 @@ lookup_protocol:
 	// 将 sock 的 各种东西 置为协议栈的各种东西
 	// 协议簇中的每个协议都有自己的 ops/prot/flags
 	// 这个 ops 就是这个协议的操作集
+	// ops 上就有
+	// .sendmsg	   = inet_sendmsg,
+	// .recvmsg	   = inet_recvmsg,
+	// 之类的方法
 	// 操作集上有类似 sendmsg recvmsg 之类的方法的指针
 	// 如果想实现自定义的私有套接字协议簇的话, 也是需要自己实现这个 ops 操作集上的方法的
 	sock->ops = answer->ops;
+	// prot 上也有
+	// .sendmsg		= udp_sendmsg,
+	// .recvmsg		= udp_recvmsg,
+	// 之类的方法
 	answer_prot = answer->prot;
 	answer_flags = answer->flags;
 	rcu_read_unlock();
@@ -338,6 +403,14 @@ lookup_protocol:
 	err = -ENOBUFS;
 
 	// 根据 answer 的类型创建出一个 sock
+	// 这里头会 sk->sk_prot = prot
+	// prot 就是 answer_prot
+	// 等之后的 sendto 的系统调用中或者 recvfrom 系统调用中
+	// 会分别调用 sock->ops 上的 .sendmsg = inet_sendmsg 或 .recvmsg = inet_recvmsg, 方法
+	// 然后这俩方法中就会分别调用
+	// sk->sk_prot->sendmsg 进行发送
+	// 或
+	// sk -> sk_prot->recvmsg 进行接收
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
@@ -364,6 +437,8 @@ lookup_protocol:
 
 	inet->inet_id = 0;
 
+	// 这里头会 sock -> sk = sk
+	// 同时也会 sk -> sk_socket = sk
 	sock_init_data(sock, sk);
 
 	sk->sk_destruct	   = inet_sock_destruct;
@@ -1944,6 +2019,7 @@ static struct packet_type ip_packet_type __read_mostly = {
  * 0.网卡收包. inet_init 方法会对一些网络层协议还有 ip 协议进行初始化
  * 	 比如 ip 协议就会创建一个 packet_type 的结构体, 把里面的 .func 填充成钩子函数
  * 	 然后使用 dev_add_pack 方法把 packet_type 添加进 ptype 的链表中
+ * 	 对于传输层协议的话, inet_add_protocol 是创建了一个 inet_protos 结构体的数组
  */
 static int __init inet_init(void)
 {

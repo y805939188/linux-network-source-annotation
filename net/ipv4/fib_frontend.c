@@ -616,6 +616,14 @@ static int rtentry_to_fib_config(struct net *net, int cmd, struct rtentry *rt,
  * Handle IP routing ioctl calls.
  * These are used to manipulate the routing tables
  */
+
+
+/**
+ * 0. 路由子系统添加路由
+ * 用户空间中调用的那些什么 route add xxx 之类的方法会调用到这个函数
+ * 比如 route add xxx 最先进来的就是这个函数
+ * 这里头会判断要进行删除还是添加一条路由信息
+ */
 int ip_rt_ioctl(struct net *net, unsigned int cmd, struct rtentry *rt)
 {
 	struct fib_config cfg;
@@ -640,6 +648,7 @@ int ip_rt_ioctl(struct net *net, unsigned int cmd, struct rtentry *rt)
 				else
 					err = -ESRCH;
 			} else {
+				// 添加一条路由信息
 				tb = fib_new_table(net, cfg.fc_table);
 				if (tb)
 					err = fib_table_insert(net, tb,
@@ -1448,7 +1457,7 @@ static int fib_inetaddr_event(struct notifier_block *this, unsigned long event, 
 }
 
 static int fib_netdev_event(struct notifier_block *this, unsigned long event, void *ptr)
-{
+{ 
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct netdev_notifier_changeupper_info *upper_info = ptr;
 	struct netdev_notifier_info_ext *info_ext = ptr;
@@ -1618,11 +1627,39 @@ static struct pernet_operations fib_net_ops = {
 
 void __init ip_fib_init(void)
 {
-	fib_trie_init();
+	fib_trie_init(); 
 
 	register_pernet_subsys(&fib_net_ops);
 
+	/**
+	 * 分别在两条通知链上注册俩函数
+	 * 
+	 * 通知链:
+	 * 	类似于发布订阅模式
+	 * 	比如 register_netdevice_notifier 就是在 netdev_chain 这条和网络设备相关的链儿上
+	 * 	注册了一个 fib_netdev_notifier 结构体,
+	 * 	这种结构体都是 notifier_block 类型, 上头都有个 notifier_call 回调
+	 * 	然后 /kernel/notifier.c 文件中的 notifier_call_chain 函数
+	 * 	可以按照优先级次序调用在此链儿上注册的所有 notifier_call 回调函数
+	 * 
+	 * 	notifier_call 回调主要会接收五个参数, 前三个比较重要
+	 * 	第一个是就是 fib_netdev_notifier 或 fib_inetaddr_notifier 本身
+	 * 	第二是 int 类型的 val, 表示事件类型
+	 * 	对于 register_netdevice_notifier 来讲就是 NETDEV_REGISTER 类型
+	 * 	第三个参数是个任意类型的指针, 这个参数可以由用户进行活用,
+	 * 	比如对于网络设备注册事件发生时, 就可以用这个 v 来表示 net_device 的指针
+	 */
+	/**
+	 * register_netdevice_notifier 会往 netdev_chain 这条链儿上注册
+	 * netdev_chain 这条链儿的主要作用就是发送有关网络设备注册状态的通知信息
+	 */
 	register_netdevice_notifier(&fib_netdev_notifier);
+	/**
+	 * register_inetaddr_notifier 会往 inetaddr_chain 这条链儿上注册
+	 * inetaddr_chain 这条链儿的主要作用
+	 * 就是发送有关本地接口上的 ipv4 地址的插入/产出/变更等信息
+	 * ipv6 的叫做 inet6addr_chain
+	 */
 	register_inetaddr_notifier(&fib_inetaddr_notifier);
 
 	rtnl_register(PF_INET, RTM_NEWROUTE, inet_rtm_newroute, NULL, 0);

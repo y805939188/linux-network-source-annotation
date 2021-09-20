@@ -1548,7 +1548,7 @@ static int inetdev_event(struct notifier_block *this, unsigned long event,
 		if (dev->flags & IFF_LOOPBACK) {
 			struct in_ifaddr *ifa = inet_alloc_ifa();
 
-			if (ifa) {
+			if (ifa) { 
 				INIT_HLIST_NODE(&ifa->hash);
 				ifa->ifa_local =
 				  ifa->ifa_address = htonl(INADDR_LOOPBACK);

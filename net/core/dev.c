@@ -1562,7 +1562,7 @@ int register_netdevice_notifier(struct notifier_block *nb)
 	/* Close race with setup_net() and cleanup_net() */
 	down_write(&pernet_ops_rwsem);
 	rtnl_lock();
-	err = raw_notifier_chain_register(&netdev_chain, nb);
+	err = raw_notifier_chain_register(&netdev_chain, nb); 
 	if (err)
 		goto unlock;
 	if (dev_boot_phase)
@@ -10349,6 +10349,10 @@ static int __init net_dev_init(void)
 	 *	Initialise the packet receive queues.
 	 */
 
+	/**
+	 * 为每个 cpu 初始化一个 softnet_data 结构
+	 * 该结构体有个 poll_list 是为了等待驱动程序注册 poll 函数的
+	 */
 	for_each_possible_cpu(i) {
 		struct work_struct *flush = per_cpu_ptr(&flush_works, i);
 		struct softnet_data *sd = &per_cpu(softnet_data, i);
@@ -10389,7 +10393,16 @@ static int __init net_dev_init(void)
 
 	if (register_pernet_device(&default_device_ops))
 		goto out;
-
+ 
+	/**
+	 * 注册两个中断
+	 * 
+	 * open_softirq 方法会把
+	 * NET_TX_SOFTIRQ 以及 NET_RX_SOFTIRQ 记录在一个 map 变量里
+	 * 并且对应的 action 是第二个参数
+	 * 
+	 * 之后 ksoftirqd 线程收到软中断的时候䧥使用这个变量来找对应中断的 action
+	 */
 	open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 

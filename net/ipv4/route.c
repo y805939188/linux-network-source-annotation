@@ -3514,6 +3514,11 @@ static __net_initdata struct pernet_operations ipv4_inetpeer_ops = {
 struct ip_rt_acct __percpu *ip_rt_acct __read_mostly;
 #endif /* CONFIG_IP_ROUTE_CLASSID */
 
+
+/**
+ * new-1. 路由子系统
+ * 在系统启动时被 /net/ipv4/ip_output.c 中的 ip_init 调用
+ */
 int __init ip_rt_init(void)
 {
 	int cpu;
@@ -3541,6 +3546,9 @@ int __init ip_rt_init(void)
 		panic("IP: failed to allocate ip_rt_acct\n");
 #endif
 
+	/**
+	 * 分配 rtable 路由缓存表的空间给 ipv4_dst_ops
+	 */
 	ipv4_dst_ops.kmem_cachep =
 		kmem_cache_create("ip_dst_cache", sizeof(struct rtable), 0,
 				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
@@ -3556,7 +3564,19 @@ int __init ip_rt_init(void)
 	ipv4_dst_ops.gc_thresh = ~0;
 	ip_rt_max_size = INT_MAX;
 
+
+	/**
+	 * 下边这俩函数是主要的初始化函数
+	 */
+	/**
+	 * 也往 netdev_chain 上注册一个处理函数
+	 * 并且用 netlink 套接字给地址和路由的命令
+	 * 比如 ip addr ip route 等注册处理函函数
+	 */
 	devinet_init();
+	/**
+	 * ip_fib_init 主要用来向两个通知链上注册事件
+	 */
 	ip_fib_init();
 
 	if (ip_rt_proc_init())

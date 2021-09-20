@@ -2427,6 +2427,116 @@ static struct sock *__udp4_lib_demux_lookup(struct net *net,
 	return NULL;
 }
 
+
+/**
+ 使用 ftrace 进行 debug
+ cd /sys/kernel/debug/
+ cd tracing/
+ cat current_tracer
+ cat available_tracers
+ echo function_graph > current_tracer // 选择一个调试器
+ cat set_ftrace_filter
+ echo *fib* > set_ftrace_filter // 选择要过滤的函数
+ cat set_ftrace_filter
+ cat trace_pipe & // 后台启动 debug
+ */
+
+
+/**
+  ------------------------------------------
+ 1)    <idle>-0    =>   route-8082
+ ------------------------------------------
+
+ 1)   0.506 us    |  fib_route_seq_open();
+ 1)               |  fib_route_seq_start() {
+ 1)   0.397 us    |    fib_get_table();
+ 1)   0.871 us    |  }
+ 1)   1.395 us    |  fib_route_seq_show();
+ 1)   0.520 us    |  fib_route_seq_next();
+ 1)   2.631 us    |  fib_route_seq_show();
+ 1)   0.897 us    |  fib_route_seq_next();
+ 1)   0.518 us    |  fib_route_seq_show();
+ 1)   0.128 us    |  fib_route_seq_next();
+ 1)   0.057 us    |  fib_route_seq_show();
+ 1)   0.093 us    |  fib_route_seq_next();
+ 1)   0.049 us    |  fib_route_seq_show();
+ 1)   0.261 us    |  fib_route_seq_next();
+ 1)   1.778 us    |  fib_route_seq_show();
+ 1)   0.580 us    |  fib_route_seq_next();
+ 1)   2.090 us    |  fib_route_seq_show();
+ 1)   0.142 us    |  fib_route_seq_next();
+ 1)   0.209 us    |  fib_route_seq_show();
+ 1)   0.076 us    |  fib_route_seq_next();
+ 1)   0.131 us    |  fib_route_seq_show();
+ 1)   0.371 us    |  fib_route_seq_next();
+ 1)   1.700 us    |  fib_route_seq_show();
+ 1)   0.157 us    |  fib_route_seq_next();
+ 1)   0.194 us    |  fib_route_seq_show();
+ 1)   0.088 us    |  fib_route_seq_next();
+ 1)   0.047 us    |  fib_route_seq_show();
+ 1)   0.119 us    |  fib_route_seq_next();
+ 1)   0.044 us    |  fib_route_seq_stop();
+ 1)   0.307 us    |  fib_table_lookup();
+ 1)   0.169 us    |  fib_select_path();
+ 1)   0.065 us    |  fib_table_lookup();
+ 1)   0.058 us    |  fib_select_path();
+ 1)   0.167 us    |  fib_get_table();
+ 1)   0.076 us    |  fib_table_lookup();
+ 3)   0.975 us    |  fib_table_lookup();
+ 3)               |  fib_validate_source() {
+ 3)               |    __fib_validate_source.isra.13() {
+ 3)   0.316 us    |      fib_table_lookup();
+ 3)   0.893 us    |    }
+ 3)   1.518 us    |  }
+ */
+
+
+
+/**
+ * 1. 路由子系统
+ * 路由子系统的中进行路由的查找或者选择主要经过三种
+ * 	1. 先看 skb 上的 sk 是否有 dst_entry
+ * 		 这上面就是路由缓存
+ * 		 之所以能做这个缓存, 是因为 sk 表示一个套接字, 套接字有端口号
+ * 	   是能唯一确定一条“路线”的, 因此可以将路由信息缓存到套接字的结构体上
+ * 	2. 然后是策略路由
+ * 	3. 之后是查询主路由表, 通过 route 命令可看到
+ * 	4. 最后查默认的路由表
+ * 	5. 查不到就丢弃
+ * 
+ * 
+ * 
+ * 
+ * 
+ * struct fib_result {
+ * 		// 决定了处理数据包的方式, 比如是将数据包转发给其他机器还是由当前主机接收
+ * 		// 还是丢弃 还是丢弃并发送一条 icmp
+ * 		// 最常见的就是 RTN_UNICAST  和 RTN_LOCAL
+ * 		unsigned char type
+ * 		struct fib_info *fi 指向
+ * 		struct fib_table *table 指向路由表
+ * }
+ * 
+ * 
+ * // fib 表示路由子系统中的主要的数据结构也就是 路由选择表
+ * struct fib_table {
+ * 		// 路由选择表的标识符
+ * 		// 对于主表是 254, 对于本地表是 255
+ * 		// 在不使用策略路由时, 引导阶段只创建两张 fib 表, 就是主表和本地表
+ * 		u32 tb_id
+ * 		// 初始化时候 fib_trie_table 在创建表时候是 0
+ * 		// fib_table_insert 会将其 +1
+ * 		// fib_table_delete 会将其 -1
+ * 		int tb_num_default
+ * 
+ * 		// 路由选择条目对象(trie)的占位符
+ * 		unsigned long tb_data[0]
+ * }
+ * 
+ * 
+ * 
+ * 
+ */
 int udp_v4_early_demux(struct sk_buff *skb)
 {
 	struct net *net = dev_net(skb->dev);
@@ -2461,6 +2571,7 @@ int udp_v4_early_demux(struct sk_buff *skb)
 						   uh->source, iph->saddr,
 						   dif, sdif);
 	} else if (skb->pkt_type == PACKET_HOST) {
+		// 根据目的地址源地址等查找是否有某个协议套接字
 		sk = __udp4_lib_demux_lookup(net, uh->dest, iph->daddr,
 					     uh->source, iph->saddr, dif, sdif);
 	}
@@ -2468,8 +2579,10 @@ int udp_v4_early_demux(struct sk_buff *skb)
 	if (!sk || !refcount_inc_not_zero(&sk->sk_refcnt))
 		return 0;
 
+	// 有这个协议套接字的话直接赋值给 skb
 	skb->sk = sk;
 	skb->destructor = sock_efree;
+	// 再看套接字的 sk_rx_dst 上是否有 dst_entry 这上面就是路由缓存
 	dst = READ_ONCE(sk->sk_rx_dst);
 
 	if (dst)
@@ -2481,11 +2594,16 @@ int udp_v4_early_demux(struct sk_buff *skb)
 		 * any place which wants to hold dst has to call
 		 * dst_hold_safe()
 		 */
+
+		// 如果 dst 上有路由缓存信息的话, 直接把路由信息赋值给 skb
+		// dst_entry 上有一个 output 和一个 input 函数指针
 		skb_dst_set_noref(skb, dst);
 
 		/* for unconnected multicast sockets we need to validate
 		 * the source on each packet
 		 */
+
+		// 如果没有缓存的话就查找路由表
 		if (!inet_sk(sk)->inet_daddr && in_dev)
 			return ip_mc_validate_source(skb, iph->daddr,
 						     iph->saddr, iph->tos,

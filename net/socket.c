@@ -1361,6 +1361,13 @@ EXPORT_SYMBOL(sock_wake_async);
 
 /**
  * 2. socket create 系统调用
+ * 
+ * 先分配一个 socket 实例, 也就是 sock
+ * 然后根据传进来的 family 协议簇从所有的协议簇 array 中找到对应的协议簇
+ * (协议簇是在操作系统初始化时候, 通过调用 sock_register 方法, 以协议簇为下标注册进数组的)
+ * 然后调用协议簇的 create 方法
+ * 
+ * **res 是系统调用 __sys_socket 中创建的, 啥也没有, 就是个空的 socket 结构体
  */
 int __sock_create(struct net *net, int family, int type, int protocol,
 			 struct socket **res, int kern)
@@ -1398,8 +1405,8 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 *	default.
 	 */
 
-	// 先分配一块儿 socket 的空间
-	sock = sock_alloc();
+	// 先分配一块儿 socket 的空间, 这个 sock 就是 socket 的实例
+	sock = sock_alloc(); 
 	if (!sock) {
 		net_warn_ratelimited("socket: no more sockets\n");
 		return -ENFILE;	/* Not exactly a match, but its the
@@ -1426,6 +1433,21 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	// 这个数组中就定义了每个协议簇都是由哪些协议组成的
 	// 以 ipv4 为例
 	// /net/ipv4/af_inet.c 中的 inet_family_ops 就是他的协议簇
+
+	/**
+	 * ipv4 的协议簇是在 inet_init 方法中通过调用 sock_register(&inet_family_ops)
+	 * 注册进来的, inet_init 就是网卡初始化收包流程中的一步
+	 * 
+	 * inet_family_ops: /net/ipv4/af_inet.c
+	 * 
+	 *  static const struct net_proto_family inet_family_ops = {
+	 *		.family = PF_INET,
+	 *		.create = inet_create,
+	 *		.owner	= THIS_MODULE,
+	 *	};
+	 *
+	 * 注: 所有的协议簇的类型都是 net_proto_family
+	 */
 	pf = rcu_dereference(net_families[family]);
 	err = -EAFNOSUPPORT;
 	if (!pf)
@@ -1529,7 +1551,22 @@ EXPORT_SYMBOL(sock_create_kern);
  * 
  * 首先进程的 task_struct 结构中有 files_struct 结构
  * files_struct 结构中有 fd_arrays[] 里头有当前进程打开的所有文件的描述符
- * 然后 fd_arrays 中对应描述符就可以找到 socket_filte_ops
+ * 然后 fd_arrays 中对应描述符就可以找到 socket_file_ops
+ * 
+ * family 通常是协议簇, 比如 AF_INET 表示 ipv4, AF_INET6 表示 ipv6,
+ * type 表示:
+ * 	enum sock_type {
+ *		SOCK_STREAM = 1, // 通常表示面向链接的 TCP
+ *		SOCK_DGRAM = 2, // 通常表示面向非连接的 UDP
+ *		SOCK_RAW = 3,
+ *		SOCK_RDM = 4,
+ *		SOCK_SEQPACKET= 5,
+ *		SOCK_DCCP = 6,
+ *		SOCK_PACKET = 10,
+ *	};
+ * protocol 通常可省略, 表示各种协议
+ * 
+ * 具体可参考: https://blog.csdn.net/weixin_30314793/article/details/98804501
  */
 int __sys_socket(int family, int type, int protocol)
 {
