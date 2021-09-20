@@ -269,6 +269,54 @@ EXPORT_SYMBOL(inet_listen);
  * 
  * 所以 socket(协议簇, 协议簇要有链接还是无连接等, 同一个类型的链接可能有多种协议可选择)
  * 比如面向无连接的时候, 传输层可以选择 UDP 或者 ICMP
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ *
+ * 1. 创建 socket 就是根据用户选择的协议簇，在内核初始化时候注册的全局的协议簇链表上找到对应的协议簇
+ * 每个选出来的协议簇都在初始化的时候就已经分配好了可以使用的更上一层的协议栈类型
+ * 也就是 socket 的第二个 type 参数
+ * 
+ * 2. 从全局链表中拿到协议簇结构体之后会调用结构体上的 create 方法
+ * 
+ * 3. create 方法中会先根据用户选择的 type 拿到内核初始化时注册在该协议栈上的所有该 type 的协议栈结构体
+ * 因为同一种 type 可能会对应不同的协议. 因为 type 其实是对 socket 的描述, 描述该 socket 是面向链接
+ * 还是非连接还是原始报文. 所以同一种 type 可能会对应多个协议, 比如 UDP 和 ICMP 都是面向非连接的
+ * 
+ * 4. 然后再根据用户选择的 protocol 在上一步选出的 type 们中把对应匹配的协议对应的 type 拿出来
+ * 
+ * 5. 这个 type 的结构体上有 ops/prot/flags 等属性
+ * 其中 ops 表示当前的 socket 上的操作集, 其中有 sendmsg 以及 recvmsg 等方法
+ * prot 是当前 type 对应的上层协议的操作集
+ * 
+ * 6. 然后 sock->ops = answer->ops;
+ * 
+ * 7. 再然后根据协议簇 family 以及协议的操作集 prot 创建一个 sock 结构体
+ * sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
+ * 此时这个 sock 结构体上就持有了 family 以及 prot 操作集
+ * 
+ * 8. 之后调用 sock_init_data(sock, sk); 这里头会 sock -> sk = sk 同时也会 sk -> sk_socket = sk
+ * 
+ * 9. 再之后还会
+ * sk->sk_destruct = inet_sock_destruct; 表示销毁时候的函数
+ * sk->sk_protocol = protocol; 表示用户选择的协议类型
+ * sk->sk_backlog_rcv = sk->sk_prot->backlog_rcv; 表示 fallback 的队列
+ * 
+ * 
+ * 
+ * 
+ * 另外关于为啥要区分 socket 和 sock 两个结构体
+ * 因为 socket 其实也是个文件, 可以通过其返回的文件描述符找到
+ * 文件描述符又对应一个 inode 结构体
+ * inode 结构体中需要包含一个 socket 结构体
+ * 首先如果直接把 sock 就放在这里的话, 会导致这个 inode 结构体变得特别大
+ * 另外还有就是, sock 是和协议相关的结构体, 如果直接把 sock 绑定在 inode 中
+ * inode 就失去了通用性
+ * 
  */
 // static struct inet_protosw inetsw_array[] =
 // {
