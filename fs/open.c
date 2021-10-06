@@ -1079,6 +1079,21 @@ struct file *file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 }
 EXPORT_SYMBOL(file_open_root);
 
+/**
+ * 0. 文件系统 open 函数
+ * open 函数的入口是 do_sys_open
+ * 
+ * 首先 get_unused_fd 拿到一个当前进程还没有使用的文件描述符
+ * 然后 do_fi lp_open 分配一个 file 结构体
+ * 之后根据 filename 查找是否已经存在 dentry, 没有的话就创建
+ * 再然后 fd_install 来把刚创建出来的 file 对象和该进程的 files_struct 对象关联上
+ * 		其中 fd_install 主要就是把传进来的当前进程的 files_struct 转换为 fdtable
+ * 		也就是转换为文件描述符表类型
+ * 		转换完之后通过 rcu_assign_pointer(fdt->fd[fd], file)
+ * 		让这条进程的文件描述符表的刚刚拿到的 fd 指向了 open 函数中刚才创建的 file 结构
+ * 		file 结构里头可以记录各种跟当前文件相关的事情比如文件的 inode, path, mode(权限), f_pos(本次打开的偏移量)等
+ * 
+ */
 long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 {
 	struct open_flags op;

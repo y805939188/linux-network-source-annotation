@@ -628,7 +628,15 @@ struct fsnotify_mark_connector;
 
 /**
  * 0. 文件系统
- * 最重要的是 inode 结构体
+ * 文件系统中主要有这么几个结构体比较重要:
+ * 	1. file_system_type: 往全局注册文件系统时候的主要结构体
+ * 	2. super_block 以及 super_operations: 当文件系统被挂载的时候产生, 对被挂载的文件系统的状态的描述
+ * 	3. file 以及 file_operations
+ * 	4. inode 以及 inode_operations
+ * 	5. dentry
+ * 
+ * 
+ * inode 结构体
  * 文件数据存储在 block 中
  * 一个 block 可以初始化文件系统的时候自己设置, 一般默认都是 4k
  * 数据在磁盘上用扇区来存储
@@ -718,6 +726,21 @@ struct fsnotify_mark_connector;
  * do_mount 中先用 user_path 方法处理用户传进来的 target path, 这个 path 就要作为所谓的 “挂载点”
  * 然后根据 mount 命令的参数 flag, 可能分别处理 do_remount、do_lookback、do_move_mount、do_new_mount 等函数
  * 最后 path_put(path) 
+ * 
+ * 
+ * 
+ * 
+ * 超级块儿对象:
+ * 	用来描述整个文件系统的信息, 每个文件系统被挂载一次后都会产生一个超级块儿
+ * 
+ * 目录项对象:
+ * 	目录项对象不会在磁盘上存储真实的数据. 同时会对应三种状态: 被使用、未使用、负状态
+ * 
+ * 文件对象:
+ * 	表示进程已经打开的文件, 有 open 系统调用创建爱你, close 系统调用进行释放, 不同的进程打开同一个文件会产生多个文件对象
+ * 
+ *
+ * read 和 write 系统调用对应的 vfs 函数叫 vfs_read 和 vfs_write
  * 
  */ 
 struct inode {
@@ -2335,6 +2358,10 @@ int sync_inode_metadata(struct inode *inode, int wait);
  * 
  * 
  * 通过 mount 命令查询出来的类似 /dev /proc 之类的目录就是装载点
+ * mount 主要是创建出一个 super_block 然后把其加入全局的 sb 链表上
+ * 
+ * touch 的时候回先根据当前所在目录拿到目录的 inode 上的 super_block
+ * 然后创建一个新的 inode
  * 
  * vfsmount 描述一个独立的文件系统的挂载信息, 每个不同的挂载点对应一个独立的 vfsmount 结构,
  * 属于同一个文件系统的所有目录和文件都属于同一个 vfs 结构
