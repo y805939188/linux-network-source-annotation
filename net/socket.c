@@ -1432,7 +1432,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	// 然后根据传进来的用户自己选择的协议簇来拿到协议簇的数组
 	// 这个数组中就定义了每个协议簇都是由哪些协议组成的
 	// 以 ipv4 为例
-	// /net/ipv4/af_inet.c 中的 inet_family_ops 就是他的协议簇
+	// /net/ipv4/af_inet.c 中的 _ 就是他的协议簇
 
 	/**
 	 * ipv4 的协议簇是在 inet_init 方法中通过调用 sock_register(&inet_family_ops)
@@ -1447,6 +1447,10 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 *	};
 	 *
 	 * 注: 所有的协议簇的类型都是 net_proto_family
+	 */
+	/**
+	 * net_families 在最上面初始化为了一个全局的数组, 大概有 46 位,
+	 * 然后其他不同的协议簇通过调用下面的 sock_register 函数把其对应的协议簇注册进来
 	 */
 	pf = rcu_dereference(net_families[family]);
 	err = -EAFNOSUPPORT;
@@ -1465,7 +1469,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 
 
 
-	// 当找到协议簇的数组也就是协议的集合之后调用协议簇的 create 方法
+	// 当找到协议簇的之后调用协议簇的 create 方法
 	// inet_family_ops 这种结构体上就有 create 方法
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
@@ -1542,7 +1546,7 @@ EXPORT_SYMBOL(sock_create_kern);
 
 
 /**
- * 1. socket create 系统调用
+ * 1. socket 系统调用 create 系统调用
  * 主要就是调用 sock_create
  * 
  * 
@@ -1564,7 +1568,8 @@ EXPORT_SYMBOL(sock_create_kern);
  *		SOCK_DCCP = 6,
  *		SOCK_PACKET = 10,
  *	};
- * protocol 通常可省略, 表示各种协议
+ * protocol 通常可省略, 表示各种协议, 不传的情况下, c 语言 int 类型的默认是 0
+ * 0 就是 IPPROTO_IP 这个协议
  * 
  * 具体可参考: https://blog.csdn.net/weixin_30314793/article/details/98804501
  */
@@ -3086,6 +3091,23 @@ bool sock_is_registered(int family)
 	return family < NPROTO && rcu_access_pointer(net_families[family]);
 }
 
+
+
+/**
+ * 0. socket 文件系统
+ * 首先在操作系统内核初始化的时候要往内核注册 socket 文件系统
+ * 主要是内核初始化时会调用 core_initcall(sock_init) 函数
+ * core_initcall 是一个叫做 __define_initcall 的宏
+ * 接收俩参数, 一个函数的地址, 一个 id 表示顺序
+ * __define_initcall 宏的作用就是:
+ * 	编译器在编译的时候，将一系列初始化函数的起始地址值按照一定的顺序
+ * 	放在一个section中。在内核初始化阶段，do_initcalls() 将按顺序从该
+ * 	section中以函数指针的形式取出这些函数的起始地址，来依次完成相应
+ * 	的初始化。由于内核某些部分的初始化需要依赖于其他某些部分的初始化
+ * 	的完成，因此这个顺序排列常常很重要。
+ * 
+ * 
+ */
 static int __init sock_init(void)
 {
 	int err;
@@ -3099,17 +3121,41 @@ static int __init sock_init(void)
 	/*
 	 *      Initialize skbuff SLAB cache
 	 */
+
+	// 给 skbuff_head_cache 以及 skbuff_fclone_cache 分配 slab 高速缓存
+	// 协议栈中所有用到的 sk_buff 都是从这俩高速缓存里里头分配出来的
 	skb_init();
 
 	/*
 	 *      Initialize the protocols module.
 	 */
 
+	// 给 sock_inode_cache 分配 slab 缓存
+	// socket 所创建以及释放的 inode 都会在该缓存区操作
 	init_inodecache();
 
+	// 注册 socket 文件系统
+	// 注: 一般文件系统比如 ext4 或者 ntfs 之类的文件系统的 xxx_fs_type 上都会与 mount 方法
+	// socket 和 proc 之类的 fs 比较特殊, 他们没有 mount, 因为 proc 是内核主动挂上的
+	// 而 socket 不需要用户手动执行 mount
 	err = register_filesystem(&sock_fs_type);
 	if (err)
 		goto out_fs;
+
+	// 挂载 socket 文件系统
+	/**
+	 * kern_mount 中会调用 alloc_vfsmnt 先创建一个 mnt 对象(struct vfsmount 类型)
+	 * 然后调用 root = mount_fs(type, flags, name, data); 获取当前要挂载的文件系统的根目录的 dentry
+	 * 对于 socket 来讲就是根目录
+	 * 之后有了 dentry 就有了 superblock
+	 * 再然后将上面那个 root 和上面的 mnt(也就是下面这个 sock_mnt)进行绑定
+	 * 最后把 mnt 给干到 root->d_sb->s_mounts 的链表上
+	 * 
+	 * 所以其实 kern_mount 的主要目的就是:
+	 * 		用于那些没有实体介质的文件系统
+	 * 		主要目的是获取文件系统的 super_block 对象
+	 * 		以及根目录的 inode 和 dentry 对象并且把这些对象加入到全局的链表中
+	 */
 	sock_mnt = kern_mount(&sock_fs_type);
 	if (IS_ERR(sock_mnt)) {
 		err = PTR_ERR(sock_mnt);
@@ -3120,6 +3166,8 @@ static int __init sock_init(void)
 	 */
 
 #ifdef CONFIG_NETFILTER
+
+	// 初始化 netfilter 框架
 	err = netfilter_init();
 	if (err)
 		goto out;

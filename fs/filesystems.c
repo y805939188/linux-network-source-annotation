@@ -81,6 +81,9 @@ int register_filesystem(struct file_system_type * fs)
 	if (fs->next)
 		return -EBUSY;
 	write_lock(&file_systems_lock);
+	
+	// 这里去全局的链表上查找, 如果有同名的就返回错误
+	// 没有同名的就返回这条链表最后一项的 next 的指针的指针
 	p = find_filesystem(fs->name, strlen(fs->name));
 	if (*p)
 		res = -EBUSY;

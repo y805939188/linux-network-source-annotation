@@ -86,6 +86,10 @@ static int do_nfs4_super_data_conv(void *raw_data)
 
 #define NFS4_NAME	"nfs4"
 
+
+/**
+ * 0. 文件系统的挂载
+ */
 COMPAT_SYSCALL_DEFINE5(mount, const char __user *, dev_name,
 		       const char __user *, dir_name,
 		       const char __user *, type, compat_ulong_t, flags,
@@ -96,16 +100,19 @@ COMPAT_SYSCALL_DEFINE5(mount, const char __user *, dev_name,
 	char *kernel_dev;
 	int retval;
 
+	// 拷贝文件系统类型的名字到内核
 	kernel_type = copy_mount_string(type);
 	retval = PTR_ERR(kernel_type);
 	if (IS_ERR(kernel_type))
 		goto out;
 
+	// 拷贝要挂载的设备名到内核
 	kernel_dev = copy_mount_string(dev_name);
 	retval = PTR_ERR(kernel_dev);
 	if (IS_ERR(kernel_dev))
 		goto out1;
 
+	// 拷贝文件系统的一些乱七八糟的参数
 	options = copy_mount_options(data);
 	retval = PTR_ERR(options);
 	if (IS_ERR(options))
@@ -119,6 +126,7 @@ COMPAT_SYSCALL_DEFINE5(mount, const char __user *, dev_name,
 		}
 	}
 
+	// 执行 do_mount
 	retval = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
 
  out3:

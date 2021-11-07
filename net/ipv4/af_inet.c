@@ -244,7 +244,7 @@ EXPORT_SYMBOL(inet_listen);
  *	Create an inet socket.
  */
 
-
+ 
 /**
  * 3. socket create 系统调用
  * sock 上有调用 socket(family, type, protocol) 中的第二个参数 type
@@ -253,6 +253,8 @@ EXPORT_SYMBOL(inet_listen);
  * 然后在 inet_init 也就是初始化网卡收包流程的函数中
  * 通过 inet_register_protosw 方法把 inetsw_array 注册到 inetsw 上
  * 对应的 ipv6 也有自己的 inetsw6 以及自己的注册方法
+ * ipv6 的在 inet6_init 中调用 sock_register(&inet6_family_ops) 注册协议簇
+ * 然后通过 proto_register(&tcpv6_prot, 1) 这种的注册可以使用的协议栈
  * 
  * inet_create 方法中根据传进来的 sock -> type 从 inetsw_array 上头遍历
  * 相当于说从一开始内核中就定义好了 ipv4 这种协议簇能使用的传输层协议的 type
@@ -290,8 +292,8 @@ EXPORT_SYMBOL(inet_listen);
  * 4. 然后再根据用户选择的 protocol 在上一步选出的 type 们中把对应匹配的协议对应的 type 拿出来
  * 
  * 5. 这个 type 的结构体上有 ops/prot/flags 等属性
- * 其中 ops 表示当前的 socket 上的操作集, 其中有 sendmsg 以及 recvmsg 等方法
- * prot 是当前 type 对应的上层协议的操作集
+ * 其中 ops 表示当前的 socket 上的操作集, 其中有 sendmsg 以及 recvmsg 等 bind	和 connect 或 accept 等方法
+ * prot 是当前 type 对应的上层协议的操作集, 比如如果这个 type 是面向链接的, 那这个 prot 就是 tcp 的操作集
  * 
  * 6. 然后 sock->ops = answer->ops;
  * 
@@ -299,7 +301,7 @@ EXPORT_SYMBOL(inet_listen);
  * sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
  * 此时这个 sock 结构体上就持有了 family 以及 prot 操作集
  * 
- * 8. 之后调用 sock_init_data(sock, sk); 这里头会 sock -> sk = sk 同时也会 sk -> sk_socket = sk
+ * 8. 之后调用 sock_init_data(sock, sk); 这里头会 sock -> sk = sk 同时也会 sk -> sk_socket = sock
  * 
  * 9. 再之后还会
  * sk->sk_destruct = inet_sock_destruct; 表示销毁时候的函数
@@ -355,7 +357,7 @@ EXPORT_SYMBOL(inet_listen);
 // };
 static int inet_create(struct net *net, struct socket *sock, int protocol,
 		       int kern)
-{
+{ 
 	struct sock *sk;
 	struct inet_protosw *answer;
 	struct inet_sock *inet;
@@ -486,7 +488,7 @@ lookup_protocol:
 	inet->inet_id = 0;
 
 	// 这里头会 sock -> sk = sk
-	// 同时也会 sk -> sk_socket = sk
+	// 同时也会 sk -> sk_socket = sock
 	sock_init_data(sock, sk);
 
 	sk->sk_destruct	   = inet_sock_destruct;

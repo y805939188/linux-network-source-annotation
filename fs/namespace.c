@@ -2778,6 +2778,14 @@ static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
  * create a new mount for userspace and request it to be added into the
  * namespace's tree
  */
+/**
+ * 2. 文件系统的挂载
+ * 这里要构建出内存中的各种结构体
+ * 所以需要先获取到该文件系统对应的 file_system_type
+ * 然后调用上头的 mount 方法
+ * 
+ * 
+ */
 static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 			int mnt_flags, const char *name, void *data)
 {
@@ -2789,6 +2797,7 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	if (!fstype)
 		return -EINVAL;
 
+	// 首先要得到该文件系统的 file_system_type
 	type = get_fs_type(fstype);
 	if (!type)
 		return -ENODEV;
@@ -2804,6 +2813,18 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 		}
 	}
 
+	/**
+	 * 这个 fs_context_for_mount 中
+	 * 调用 alloc_fs_context 方法
+	 * alloc_fs_context 方法中对 fc 上的属性做了一些赋值
+	 * 然后 init_fs_context = legacy_init_fs_context;
+	 * ret = init_fs_context(fc);
+	 * 在这个 init_fs_context 中给 fc 上的 fc->ops 赋值为 &legacy_fs_context_ops;
+	 * legacy_fs_context_ops 上就有 get_tree 方法
+	 * get_tree 方法指向 legacy_get_tree 函数
+	 * 
+	 * 这个 legacy_get_tree 在下面的 vfs_get_tree 方法中会被用到
+	 */
 	fc = fs_context_for_mount(type, sb_flags);
 	put_filesystem(type);
 	if (IS_ERR(fc))
@@ -2819,14 +2840,34 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	if (!err && !mount_capable(fc))
 		err = -EPERM;
 	if (!err)
+
+ 
+	// 这里面调用 type 上的 mount 方法
+	// 在这个 get_tree 方法中就会调用 fc->fs_type->mount 函数
+	// 这个 mount 方法中, 需要每个文件系统自己创建好一个 super_block 结构体
+	// 并且将 super_block 结构体的 s_root 置为 dentry 并返回
 		err = vfs_get_tree(fc);
 	if (!err)
-		err = do_new_mount_fc(fc, path, mnt_flags);
+	// 上面的 vfs_get_tree 创建好了内核中的 spuer_block 之后
+	// 要在下面这个 do_new_mount_fc 中创建一个 mount 结构体
+	// do_new_mount_fc 中通过 vfs_create_mount 方法
+	// 创建了一个 mount 结构体以及 vfsmount 结构体
+	// 并让 mount 的 mnt 指向 vfsmount 并返回
+	// 最后在 do_new_mount_fc 中
+	// 还有一步 do_add_mount 操作
+	// 这个方法中会调用一个 graft_tree
+	// 将 new mount 添加到全局的文件系统树中
+	// graft_tree
+	//   -> attach_recursive_mnt(将父 mount 和子 mount 建立关联, 将挂载点 dentry 以及 vfsmount 生成 hash 计算并保存到 mount_hashtable)
+	//   	 -> propagate_mnt(将 mount 加入到全局的 mnt_hash 数组中)
+	//     -> mnt_set_mountpoint(将父子 mount 简历关联)
+	//     -> commit_tree(将挂载点 dentry 和父级的 vfsmount 通过 hash 计算并保存到 mount_hashtable 数组中, 路径解析时, lookup_mnt 会通过父 vfsmount 和挂载点的 dentry 找到子级 mount)
+		err = do_new_mount_fc(fc, path, mnt_flags); 
 
 	put_fs_context(fc);
 	return err;
 }
-
+ 
 int finish_automount(struct vfsmount *m, struct path *path)
 {
 	struct mount *mnt = real_mount(m);
@@ -3058,9 +3099,22 @@ char *copy_mount_string(const void __user *data)
  * Therefore, if this magic number is present, it carries no information
  * and must be discarded.
  */
+
+/**
+ * 1. 文件系统的挂载
+ */
 long do_mount(const char *dev_name, const char __user *dir_name,
 		const char *type_page, unsigned long flags, void *data_page)
 {
+
+	/**
+	 * 要将用户空间的 path 转换成内核空间的 path
+	 * 因为用户空间使用的时候其实只要用路径就行了
+	 * 但是有可能同一个目录下挂载了多个不同的设备(多个不同的文件系统)
+	 * 因此至少需要两个元素才能唯一确定一个设备
+	 * 
+	 * 所以 path 结构体中有 vfsmount 以及 dentry 这俩结构体
+	 */
 	struct path path;
 	unsigned int mnt_flags = 0, sb_flags;
 	int retval = 0;
@@ -3077,10 +3131,15 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 		return -EINVAL;
 
 	/* ... and get the mountpoint */
+	/**
+	 * 在这里去转换 path 构建 path 结构体
+	 */
 	retval = user_path_at(AT_FDCWD, dir_name, LOOKUP_FOLLOW, &path);
 	if (retval)
 		return retval;
 
+	// 然后要根据不同的 flag 做不同的处理
+	// 对于第一次挂载的设备大概率执行 do_new_mount
 	retval = security_sb_mount(dev_name, &path,
 				   type_page, flags, data_page);
 	if (!retval && !may_mount())
@@ -3139,6 +3198,9 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	else if (flags & MS_MOVE)
 		retval = do_move_mount_old(&path, dev_name);
 	else
+
+
+		// 大概率会执行到这里
 		retval = do_new_mount(&path, type_page, sb_flags, mnt_flags,
 				      dev_name, data_page);
 dput_out:
