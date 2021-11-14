@@ -8,10 +8,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-
 int main()
 {
-	int ret = 0;
     int fd = socket(45, SOCK_DGRAM, 0);
     if(fd < 0)
     {
@@ -25,19 +23,18 @@ int main()
         .sin_port     = htons(3355),
         .sin_addr.s_addr = htonl(INADDR_ANY)
     };
-    bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    uint32_t count    = 1;
     while(1)
     {
         uint32_t buf[2] = {0};
+        buf[1] = htonl(count);
+        buf[0] = htonl(0x76543210);
         
-        struct sockaddr_in addr_client;
-        socklen_t addr_len = sizeof(addr_client);
-        ret = recvfrom(fd, buf, sizeof(buf), 0, 
-            (struct sockaddr *)&addr_client, &addr_len);
-        printf("从 client 端接收到: %x,%d\n", ntohl(buf[0]), ntohl(buf[1]));
+        sendto(fd, buf, sizeof(buf), 0, 
+            (struct sockaddr *)&addr, sizeof(addr));
+        count++;
         sleep(1);
     }
     close(fd);
     return 0;
 }
-

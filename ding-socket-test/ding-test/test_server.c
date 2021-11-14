@@ -34,7 +34,7 @@ int main()
         socklen_t addr_len = sizeof(addr_client);
         ret = recvfrom(fd, buf, sizeof(buf), 0, 
             (struct sockaddr *)&addr_client, &addr_len);
-        printf("从 client 端接收到: %x,%d\n", ntohl(buf[0]), ntohl(buf[1]));
+        printf("-------------------> USER SPACE RECV: %x,%d\n", ntohl(buf[0]), ntohl(buf[1]));
         sleep(1);
     }
     close(fd);

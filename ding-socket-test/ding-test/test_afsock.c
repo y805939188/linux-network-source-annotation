@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (C) 2011 Instituto Nokia de Tecnologia
+ *
+ * Authors:
+ *    Aloisio Almeida Jr <aloisio.almeida@openbossa.org>
+ *    Lauro Ramos Venancio <lauro.venancio@openbossa.org>
+ */
 
 #include <linux/socket.h>
 #include <linux/module.h>
@@ -23,13 +30,12 @@ static int test_proto_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, i
 		return 0;
 	
 	n = copy_to_iter(pkt_buf, pkt_len, &msg->msg_iter);
-		printk("内核接收到:%s\n", pkt_buf);
 	if (n != pkt_len)
 		return -EFAULT;
-// #ifdef TEST_AFSOCK_DEBUG
-// 	print_hex_dump(KERN_ERR, "接收 package: ", DUMP_PREFIX_OFFSET,
-// 		 16, 1, pkt_buf, pkt_len, true);
-// #endif
+#ifdef TEST_AFSOCK_DEBUG
+	print_hex_dump(KERN_ERR, "recv packet: ", DUMP_PREFIX_OFFSET,
+		 16, 1, pkt_buf, pkt_len, true);
+#endif
 	pkt_len = 0;
 	return n;
 }
@@ -41,10 +47,10 @@ static int test_proto_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (!copy_from_iter_full(pkt_buf, len, &msg->msg_iter))
 		return -EFAULT;
 	pkt_len = len;
-// #ifdef TEST_AFSOCK_DEBUG
-// 	print_hex_dump(KERN_ERR, "发送 package: ", DUMP_PREFIX_OFFSET,
-// 		 16, 1, pkt_buf, pkt_len, true);
-// #endif
+#ifdef TEST_AFSOCK_DEBUG
+	print_hex_dump(KERN_ERR, "send packet: ", DUMP_PREFIX_OFFSET,
+		 16, 1, pkt_buf, pkt_len, true);
+#endif
 
 	return 0;
 }
@@ -157,5 +163,6 @@ void __exit test_afsock_exit(void)
 module_init(test_afsock_init);
 module_exit(test_afsock_exit);
 
+MODULE_AUTHOR("Kees Cook <keescook@chromium.org>");
 MODULE_LICENSE("GPL");
 

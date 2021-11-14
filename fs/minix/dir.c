@@ -208,7 +208,7 @@ int minix_add_link(struct dentry *dentry, struct inode *inode)
 	unsigned long npages = dir_pages(dir);
 	unsigned long n;
 	char *kaddr, *p;
-	minix_dirent *de;
+	minix_dirent *de; // 这个就是 minix_dir_entry 的别名
 	minix3_dirent *de3;
 	loff_t pos;
 	int err;
