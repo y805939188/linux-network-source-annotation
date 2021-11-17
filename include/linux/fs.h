@@ -755,7 +755,7 @@ struct inode {
 	struct posix_acl	*i_default_acl;
 #endif
 
-	const struct inode_operations	*i_op;
+	const struct inode_operations	*i_op; // 对应的 inode 操作集
 	struct super_block	*i_sb;
 	struct address_space	*i_mapping;
 

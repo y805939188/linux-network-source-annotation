@@ -243,6 +243,7 @@ static const struct super_operations simple_super_operations = {
 	.statfs		= simple_statfs,
 };
 
+// socket 的 super_block 的 s_op 在这里赋值
 static int pseudo_fs_fill_super(struct super_block *s, struct fs_context *fc)
 {
 	struct pseudo_fs_context *ctx = fc->fs_private;

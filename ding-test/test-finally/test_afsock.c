@@ -25,7 +25,6 @@ static int ding_test_proto_recvmsg(struct sock *sk, struct msghdr *msg, size_t l
 // 在套接字发送接收系统调用流程中，send/recv，sendto/recvfrom，sendmsg/recvmsg最终都会使用内核中的msghdr来组织数据
 // msg_iter 是 iov_iter 这样的一个结构体, 里面的信息就可以描述数据
 static int ding_test_proto_sendmsg(struct sock *sk, struct msghdr *msg, size_t len) {
-	printk("<%s:%d>\n",__FUNCTION__, __LINE__);
 	// copy_from_iter_full 用来把 msg_iter 报文内容拷贝到自定义的 buffer 中
 	if (!copy_from_iter_full(pkt_buf, len, &msg->msg_iter)) return -EFAULT;
 	pkt_len = len;
@@ -33,8 +32,8 @@ static int ding_test_proto_sendmsg(struct sock *sk, struct msghdr *msg, size_t l
 	return 0;
 }
 
-static void ding_test_proto_unhash(struct sock *sk) { printk("<%s:%d>\n",__FUNCTION__, __LINE__); return; }
-static int ding_test_afsock_bind(struct socket *sock, struct sockaddr *myaddr, int sockaddr_len) { printk("<%s:%d>\n",__FUNCTION__, __LINE__); return 0; }
+static void ding_test_proto_unhash(struct sock *sk) { printk("这里是 ding_test_proto_unhash 方法"); return; }
+static int ding_test_afsock_bind(struct socket *sock, struct sockaddr *myaddr, int sockaddr_len) { printk("这里是 ding_test_afsock_bind 方法"); return 0; }
 
 static int ding_test_afsock_release(struct socket *sock) {
 	struct sock *sk = sock->sk;
@@ -74,15 +73,6 @@ static const struct proto_ops test_afsock_pf_ops = {
 	.recvmsg	   = ding_test_afsock_recvmsg, // 使用套接字接收时用
 };
 
-static void ding_test_afsock_destruct(struct sock *sk) {
-	// 析构的时候要清理一些内存空间, 比如接收队列或发送队列
-	// 一些缓存以及目标信息等
-	skb_queue_purge(&sk->sk_error_queue);
-	skb_queue_purge(&sk->sk_receive_queue);
-	dst_release(sk->sk_dst_cache);
-	dst_release(sk->sk_rx_dst);
-}
-
 // 这里使用自定义的四层协议栈类型, 也可以直接使用 tcp 或者 udp 以及 ICMP 之类的
 static struct proto ding_test_proto = {
 	.name	  = "DING_TEST",
@@ -110,7 +100,6 @@ static int ding_test_afsock_create(struct net *net, struct socket *sock, int pro
 	// 初始化 sock 和 sk 中的一些东西, 并让它俩能互相引用
 	// 往下基本上可以说是一些固定的流程
 	sock_init_data(sock, sk);
-	sk->sk_destruct = ding_test_afsock_destruct;
 	sk->sk_protocol = proto;
 	sk->sk_family 	= PF_DINGTEST;
 	// 接收队列已经满了的时候会暂时先将报文放到 backlog_rcv 队列中
@@ -127,10 +116,6 @@ static const struct net_proto_family ding_test_afsock_family_ops = {
 
 int __init ding_test_afsock_init(void) {
 	int rc = 0;
-	// // 注册自己的协议栈
-	// rc = proto_register(&ding_test_proto, 1);
-	// if(rc) goto proto_failed;
-	
 	// 注册自己实现的协议簇
 	rc = sock_register(&ding_test_afsock_family_ops);
 	if(rc) goto sock_failed;
@@ -138,14 +123,10 @@ int __init ding_test_afsock_init(void) {
 	
 sock_failed:
 	sock_unregister(PF_DINGTEST);
-// proto_failed:
-// 	proto_unregister(&ding_test_proto);
 	return rc;
 }
 
 void __exit ding_test_afsock_exit(void) {
-	// // 模块卸载的时候取消注册
-	// proto_unregister(&ding_test_proto);
 	sock_unregister(PF_DINGTEST);
 }
 module_init(ding_test_afsock_init);

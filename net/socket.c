@@ -341,6 +341,7 @@ static const struct xattr_handler *sockfs_xattr_handlers[] = {
 
 static int sockfs_init_fs_context(struct fs_context *fc)
 {
+	// 此时 fc->ops = &pseudo_fs_context_ops;
 	struct pseudo_fs_context *ctx = init_pseudo(fc, SOCKFS_MAGIC);
 	if (!ctx)
 		return -ENOMEM;
@@ -1471,6 +1472,10 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 
 	// 当找到协议簇的之后调用协议簇的 create 方法
 	// inet_family_ops 这种结构体上就有 create 方法
+	// 主要作用是:
+	// 	把用户层的 socket 结构体和内核层的 sock 结构体
+	// 	做一个绑定, 并把 sock 结构体和具体的协议簇
+	//  以及对应的 4 层协议做一个绑定
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
 		goto out_module_put;

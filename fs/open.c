@@ -1165,6 +1165,9 @@ COMPAT_SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, fla
  * For backward compatibility?  Maybe this should be moved
  * into arch/i386 instead?
  */
+/**
+ * 文件系统 创建文件
+ */
 SYSCALL_DEFINE2(creat, const char __user *, pathname, umode_t, mode)
 {
 	return ksys_open(pathname, O_CREAT | O_WRONLY | O_TRUNC, mode);
