@@ -1012,6 +1012,20 @@ static struct nf_ct_helper_expectfn follow_master_nat = {
 	.expectfn	= nf_nat_follow_master,
 };
 
+/**
+ * @brief
+ * 该方法会在 nf_nat_ipv4_register_fn 中被执行
+ * 	return nf_nat_register_fn(net, ops->pf, ops, nf_nat_ipv4_ops,
+ *			  ARRAY_SIZE(nf_nat_ipv4_ops));
+ * 
+ * @param net 网络命名空间
+ * @param pf 协议簇
+ * @param ops nf_nat_ipv4_ops 数组中的某一项
+ * @param orig_nat_ops static const struct nf_hook_ops nf_nat_ipv4_ops[]
+ * @param ops_count orig_nat_ops 的 size
+ * @return int 
+ */
+
 int nf_nat_register_fn(struct net *net, u8 pf, const struct nf_hook_ops *ops,
 		       const struct nf_hook_ops *orig_nat_ops, unsigned int ops_count)
 {
