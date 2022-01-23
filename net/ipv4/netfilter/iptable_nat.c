@@ -55,7 +55,7 @@ static unsigned int iptable_nat_do_chain(void *priv,
  * 对于 filter 或其他表来说, 可能优先级和执行的函数都一样
  * 然后就直接用 xt_hook_ops_alloc(packet_filter, hook 函数) 方法做函数注册了
  * 
- * 首先每个表都有个私有的 static const struct xt_table packet_filter 结构
+ * 首先每个表都有个私有的 static const struct xt_table packet_filter(以 filter 为例) 结构
  * packet_filter 上定义了优先级, 协议簇, 还有有效的钩子点位
  * 然后 xt_hook_ops_alloc 方法就遍历这些钩子点位
  * 最后做出一条 nf_hook_ops 的数组
@@ -88,8 +88,10 @@ static unsigned int iptable_nat_do_chain(void *priv,
  * 也就是说, 就相当于:
  * 	netns = {
  * 		ipv4: {
- * 			nat: [hook1, hook2, ......],
- * 			filter: [hook1, hook2, ......],
+ * 			// 以下不同点位对应的 hooks 们可能来自不同的地方注册
+ * 			// 比如 iptable 的 nat 或者 filter, 都可能在同一个点位进行 hook 的注册
+ * 			NF_INET_PRE_ROUTING: [hook1, hook2, ......],
+ * 			NF_BR_LOCAL_IN: [hook1, hook2, ......],
  * 			......
  * 		},
  * 		ipv6: {
@@ -111,7 +113,7 @@ static unsigned int iptable_nat_do_chain(void *priv,
  *		p->out = outdev;
  *		p->sk = sk;
  *		p->net = net;
- *		p->okfn = okfn;
+ *		p->okfn = okfn; // 表示过滤完之后如果 sk buffer 还没被扔, 就走这个回调
  *	}
  *
  * 之后遍历上面找到的点位, 分别执行点位上的每个 hook 函数

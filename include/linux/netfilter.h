@@ -143,7 +143,7 @@ static inline void nf_hook_state_init(struct nf_hook_state *p,
 				      struct sock *sk,
 				      struct net *net,
 				      int (*okfn)(struct net *, struct sock *, struct sk_buff *))
-{
+{ 
 	p->hook = hook;
 	p->pf = pf;
 	p->in = indev;
