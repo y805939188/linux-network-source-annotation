@@ -312,6 +312,9 @@ EXPORT_SYMBOL(inet_listen);
  * 
  * 
  * 另外关于为啥要区分 socket 和 sock 两个结构体
+ * 一个是因为要分层, socket 是面向用户, 可以让用户感知到的
+ * 并且是和协议无关的一层
+ * 而 sock 才是真正和面向协议的一层, 它真的要持有协议的一些方法
  * 因为 socket 其实也是个文件, 可以通过其返回的文件描述符找到
  * 文件描述符又对应一个 inode 结构体
  * inode 结构体中需要包含一个 socket 结构体
@@ -444,6 +447,24 @@ lookup_protocol:
 	// .sendmsg		= udp_sendmsg,
 	// .recvmsg		= udp_recvmsg,
 	// 之类的方法
+	/**
+	 * @brief 这个 answer->ops 也就是 proto_ops 类型
+	 * 它看上去和下边那个 answer->prot 很像
+	 * 他们俩都有 bind connect sendmsg 等方法
+	 * 并且他俩都会被挂在协议簇对应的数组的每个元素上
+	 * 其中 proto_ops 是用来描述 “传输层协议栈具有哪些能力” 的数据结构体
+	 * (
+	 * 	当然也不一定非得是传输层协议具有哪些能力, 比如 ICMP 是网络层的
+	 *  它的 proto_ops 是 inet_sockraw_ops
+	 * 	里边也有这些什么 sendmsg 方法
+	 * 	所以严格来说
+	 * 	这个 proto_ops 是用来表示
+	 * 	当前这个协议簇中能够使用的协议所在的协议栈应该具备的能力
+	 * )
+	 * 而那个 answer->prot 是表示真正每个协议实现的能力
+	 * 所以说一个在 “协议栈” 那层, 一个在 “协议那层”
+	 * 比如协议栈的 connect 最终还是会调用到真正协议层实现的 connect
+	 */
 	answer_prot = answer->prot;
 	answer_flags = answer->flags;
 	rcu_read_unlock();
@@ -453,7 +474,7 @@ lookup_protocol:
 	err = -ENOBUFS;
 
 	// 根据 answer 的类型创建出一个 sock
-	// 这里头会 sk->sk_prot = prot
+	// 这里头会 sk->sk_prot = prot (协议具备的能力)
 	// prot 就是 answer_prot
 	// 等之后的 sendto 的系统调用中或者 recvfrom 系统调用中
 	// 会分别调用 sock->ops 上的 .sendmsg = inet_sendmsg 或 .recvmsg = inet_recvmsg, 方法
@@ -461,6 +482,7 @@ lookup_protocol:
 	// sk->sk_prot->sendmsg 进行发送
 	// 或
 	// sk -> sk_prot->recvmsg 进行接收
+	// sk_alloc 的实现在: net/core/sock.c
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
