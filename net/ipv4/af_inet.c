@@ -302,6 +302,8 @@ EXPORT_SYMBOL(inet_listen);
  * 此时这个 sock 结构体上就持有了 family 以及 prot 操作集
  * 
  * 8. 之后调用 sock_init_data(sock, sk); 这里头会 sock -> sk = sk 同时也会 sk -> sk_socket = sock
+ * 		同时还会 sk->sk_data_ready	=	sock_def_readable
+ * 		之后当软中断上受到数据包时会通过调用这个 sk_data_ready 以用来唤醒该 socket.sock 上的睡眠中的 task_struct
  * 
  * 9. 再之后还会
  * sk->sk_destruct = inet_sock_destruct; 表示销毁时候的函数
@@ -321,6 +323,30 @@ EXPORT_SYMBOL(inet_listen);
  * 首先如果直接把 sock 就放在这里的话, 会导致这个 inode 结构体变得特别大
  * 另外还有就是, sock 是和协议相关的结构体, 如果直接把 sock 绑定在 inode 中
  * inode 就失去了通用性
+ * 或者换句话说, socket 更多的是为了能抽象 vfs 文件系统
+ * 比如 ext4 文件系统
+ * 该文件系统创建文件时会先创建一个 “ext4_inode_info” 结构体
+ * 该 “ext4_inode_info” 结构体上有个 “vfs_inode”
+ * 这个 “vfs_inode” 是真正的 vfs 那层所有文件系统通用的 inode
+ * 这俩结构体可以互相转换(互相指向)
+ * 当然对于 ext4 来说最后真正到磁盘上还有个要写到磁盘上的 “ext4_inode”
+ * 当给某个 ext4 文件系统创建文件时
+ * 会先分配 vfs 的 inode, 但实际上该分配函数是由每个文件系统自己实现的
+ * 该函数接口要求一定要返回 vfs 层的 inode 结构体
+ * 但实际上每种文件系统都会在该分配函数中先创建自己这种文件系统在内存中的 inode
+ * 就比如 ext4 的 “ext4_inode_info”
+ * 然后这种每种文件系统自己的 inode 会和 vfs 的 inode 互相绑定
+ * 最后该分配 inode 的函数再返回 ext4_inode_info -> inode
+ * 
+ * 类似的 sockfs 也是如此
+ * 每次创建 socket 时, 其实会伴生地创建出对应的 inode
+ * sockfs 提供了两种数据结构的相互转换函数
+ * struct socket_alloc {
+ *   struct socket socket;
+ *	 struct inode vfs_inode;
+ * };
+ * 所以 socket 其实就相当于是文件系统那一层的 inode
+ * socket 结构体上是真的有 file 结构体, 然后上边有 file_operations
  * 
  */
 // static struct inet_protosw inetsw_array[] =

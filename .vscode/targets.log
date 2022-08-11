@@ -6,11 +6,8 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
 # PARTICULAR PURPOSE.
 
 # This program built for i386-apple-darwin11.3.0
- 
-make: *** No rule to make target `all'.  Stop.
 
-
-# Make data base, printed on Thu Aug  4 00:18:08 2022
+# Make data base, printed on Thu Aug 11 22:55:29 2022
 
 # Variables
 
@@ -29,7 +26,7 @@ CURDIR := /Users/dingshinn/Desktop/linux-network-source-annotation
 # makefile
 SHELL = /bin/sh
 # environment
-VSCODE_NLS_CONFIG = {"locale":"zh-cn","availableLanguages":{"*":"zh-cn"},"_languagePackId":"1d735750dbb1b9066c7513078396ba0f.zh-cn","_translationsConfigFile":"/Users/dingshinn/Library/Application Support/Code/clp/1d735750dbb1b9066c7513078396ba0f.zh-cn/tcf.json","_cacheRoot":"/Users/dingshinn/Library/Application Support/Code/clp/1d735750dbb1b9066c7513078396ba0f.zh-cn","_resolvedLanguagePackCoreLocation":"/Users/dingshinn/Library/Application Support/Code/clp/1d735750dbb1b9066c7513078396ba0f.zh-cn/3b889b090b5ad5793f524b5d1d39fda662b96a2a","_corruptedFile":"/Users/dingshinn/Library/Application Support/Code/clp/1d735750dbb1b9066c7513078396ba0f.zh-cn/corrupted.info","_languagePackSupport":true}
+VSCODE_NLS_CONFIG = {"locale":"zh-cn","availableLanguages":{"*":"zh-cn"},"_languagePackId":"e1243840abbb4e31a890d397033a9abf.zh-cn","_translationsConfigFile":"/Users/dingshinn/Library/Application Support/Code/clp/e1243840abbb4e31a890d397033a9abf.zh-cn/tcf.json","_cacheRoot":"/Users/dingshinn/Library/Application Support/Code/clp/e1243840abbb4e31a890d397033a9abf.zh-cn","_resolvedLanguagePackCoreLocation":"/Users/dingshinn/Library/Application Support/Code/clp/e1243840abbb4e31a890d397033a9abf.zh-cn/da76f93349a72022ca4670c1b84860304616aaa2","_corruptedFile":"/Users/dingshinn/Library/Application Support/Code/clp/e1243840abbb4e31a890d397033a9abf.zh-cn/corrupted.info","_languagePackSupport":true}
 # environment
 _ = /usr/bin/make
 # makefile
@@ -48,8 +45,6 @@ PATH = /opt/homebrew/opt/binutils/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/
 LSCOLORS = Gxfxcxdxbxegedabagacad
 # environment
 GOPATH = /Users/dingshinn/go
-# environment
-LaunchInstanceID = 0E29A1A5-05E0-4534-8A9C-B81CFBCCD273
 # environment
 ELECTRON_RUN_AS_NODE = 1
 # default
@@ -75,7 +70,7 @@ HOME = /Users/dingshinn
 # default
 MAKEFILEPATH = $(shell /usr/bin/xcode-select -print-path 2>/dev/null || echo /Developer)/Makefiles
 # environment
-VSCODE_CODE_CACHE_PATH = /Users/dingshinn/Library/Application Support/Code/CachedData/3b889b090b5ad5793f524b5d1d39fda662b96a2a
+VSCODE_CODE_CACHE_PATH = /Users/dingshinn/Library/Application Support/Code/CachedData/da76f93349a72022ca4670c1b84860304616aaa2
 # environment
 LOGNAME = dingshinn
 # environment
@@ -94,6 +89,8 @@ MAKE = $(MAKE_COMMAND)
 MAKECMDGOALS := all
 # environment
 SHLVL = 1
+# environment
+BLOCKSIZE = 512
 # default
 MAKE_VERSION := 3.81
 # environment
@@ -115,7 +112,7 @@ TMPDIR = /var/folders/yp/2hjqz2qj0ln8vrc1rx44g5cw0000gn/T/
 # automatic
 *F = $(notdir $*)
 # environment
-VSCODE_IPC_HOOK = /Users/dingshinn/Library/Application Support/Code/1.69.2-main.sock
+VSCODE_IPC_HOOK = /Users/dingshinn/Library/Application Support/Code/1.70.0-main.sock
 # environment
 MallocNanoZone = 0
 # makefile
@@ -146,8 +143,6 @@ MAKEFILES :=
 PAGER = less
 # environment
 LC_ALL = C
-# environment
-SECURITYSESSIONID = 186b1
 # automatic
 ^F = $(notdir $^)
 # default
@@ -159,9 +154,9 @@ MAKELEVEL := 0
 # environment
 LANG = C
 # environment
-VSCODE_PID = 589
+VSCODE_PID = 40026
 # variable set hash-table stats:
-# Load=73/1024=7%, Rehash=0, Collisions=1/94=1%
+# Load=72/1024=7%, Rehash=0, Collisions=1/93=1%
 
 # Pattern-specific Variable Values
 
@@ -243,6 +238,8 @@ GNUmakefile:
 # strcache size: total = 0 / max = 0 / min = 4096 / avg = 0
 # strcache free: total = 0 / max = 0 / min = 4096 / avg = 0
 
-# Finished Make data base on Thu Aug  4 00:18:08 2022
+# Finished Make data base on Thu Aug 11 22:55:29 2022
 
  
+make: *** No rule to make target `all'.  Stop.
+
